@@ -34,6 +34,8 @@ steps:
       - '--quiet'
 
 # Substitution variable defaults (overridable from Cloud Build trigger dashboard)
+# ℹ️  All env vars (DB, API keys, etc.) are set directly in Cloud Run console
+#    and are preserved automatically across every deployment.
 substitutions:
   _PROJECT_ID: 'scrapdms-496614'
   _REGION: 'asia-south1'
