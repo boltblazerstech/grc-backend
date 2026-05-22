@@ -1,4 +1,4 @@
-CREATE TABLE gstr7_filing_details (
+CREATE TABLE IF NOT EXISTS gstr7_filing_details (
     id BIGSERIAL PRIMARY KEY,
     gstin VARCHAR(15) NOT NULL,
     return_period VARCHAR(7) NOT NULL,

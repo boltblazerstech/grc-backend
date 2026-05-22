@@ -2,12 +2,12 @@ package com.company.grc.service;
 
 import com.company.grc.dto.PanGstr7DataResponse;
 import com.company.grc.entity.GstDetailsEntity;
-import com.company.grc.entity.HsnCategoryEntity;
 import com.company.grc.entity.PanHsnConfigEntity;
 import com.company.grc.repository.GstDetailsRepository;
 import com.company.grc.repository.HsnCategoryRepository;
 import com.company.grc.repository.PanHsnConfigRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class Gstr7Service {
@@ -78,6 +79,16 @@ public class Gstr7Service {
         return gstDetailsRepository.save(gstDetails);
     }
 
+    @Transactional
+    public PanHsnConfigEntity setTdsApplicability(String pan, Boolean isApplicable, String updatedBy) {
+        PanHsnConfigEntity config = panHsnConfigRepository.findById(pan)
+                .orElse(new PanHsnConfigEntity());
+        config.setPan(pan);
+        config.setIsApplicable(Boolean.TRUE.equals(isApplicable));
+        config.setUpdatedBy(updatedBy);
+        return panHsnConfigRepository.save(config);
+    }
+
     @Transactional(readOnly = true)
     public List<PanGstr7DataResponse> fetchAllPanGstr7Data() {
         List<GstDetailsEntity> allGstDetails = gstDetailsRepository.findAll();
@@ -86,25 +97,21 @@ public class Gstr7Service {
                 .filter(g -> g.getPanNumber() != null && !g.getPanNumber().trim().isEmpty())
                 .collect(Collectors.groupingBy(GstDetailsEntity::getPanNumber));
 
-        Map<Long, HsnCategoryEntity> categoriesById = hsnCategoryRepository.findAll().stream()
-                .collect(Collectors.toMap(HsnCategoryEntity::getId, c -> c));
-
-        // Pre-fetch ALL PAN configs in one query instead of N individual queries
         Map<String, PanHsnConfigEntity> allConfigs = panHsnConfigRepository.findAll().stream()
-                .collect(Collectors.toMap(PanHsnConfigEntity::getPan, c -> c));
+                .collect(Collectors.toMap(c -> c.getPan() != null ? c.getPan().trim().toUpperCase() : "", c -> c, (a, b) -> a));
+
+        log.info("[GSTR7] pan_hsn_config rows: {}, applicable PANs: {}",
+                allConfigs.size(),
+                allConfigs.entrySet().stream()
+                        .filter(e -> Boolean.TRUE.equals(e.getValue().getIsApplicable()))
+                        .map(Map.Entry::getKey).collect(Collectors.toList()));
+        log.info("[GSTR7] gst_details PANs sample: {}",
+                groupedByPan.keySet().stream().limit(5).collect(Collectors.toList()));
 
         return groupedByPan.entrySet().stream()
                 .map(entry -> {
-                    String pan = entry.getKey();
+                    String pan = entry.getKey() != null ? entry.getKey().trim().toUpperCase() : "";
                     PanHsnConfigEntity config = allConfigs.get(pan);
-                    Long categoryId = config != null ? config.getCategoryId() : null;
-                    HsnCategoryEntity category = categoryId != null ? categoriesById.get(categoryId) : null;
-
-                    List<String> hsnCodes = category != null && category.getCodes() != null
-                            ? category.getCodes().stream()
-                                    .map(c -> c.getHsnCode())
-                                    .collect(Collectors.toList())
-                            : List.of();
 
                     List<PanGstr7DataResponse.GstinData> gstinDataList = entry.getValue().stream()
                             .map(g -> PanGstr7DataResponse.GstinData.builder()
@@ -134,10 +141,7 @@ public class Gstr7Service {
                     return PanGstr7DataResponse.builder()
                             .panNumber(pan)
                             .companyName(companyName)
-                            .categoryId(categoryId)
-                            .categoryName(category != null ? category.getName() : null)
-                            .hsnCodes(hsnCodes)
-                            .isApplicable(category != null && "Scrap".equalsIgnoreCase(category.getName() != null ? category.getName().trim() : ""))
+                            .isApplicable(config != null ? config.getIsApplicable() : null)
                             .gstins(gstinDataList)
                             .build();
                 })

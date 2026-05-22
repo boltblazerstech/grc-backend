@@ -98,7 +98,7 @@ public class Gstr7FilingService {
         else if (delayed > 0) status = "Regular with Delay";
         
         boolean allMissing = finalItems.stream().allMatch(i -> i.dateOfFiling() == null && "Missed".equals(i.status()));
-        if (allMissing) status = "Processing";
+        if (allMissing) status = "NA";
 
         return new FilingPreviewResponse(finalItems, status, (int) delayed, (int) missed);
     }
@@ -432,7 +432,7 @@ public class Gstr7FilingService {
         long totalMissed = explicitMissed + missingCount;
 
         if (records.isEmpty()) {
-            entity.setGstr7Status("Processing");
+            entity.setGstr7Status("NA");
             entity.setGstr7DelayCount(null);
             entity.setGstr7MissedCount(null);
         } else {

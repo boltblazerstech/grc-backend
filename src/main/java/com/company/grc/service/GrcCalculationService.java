@@ -12,6 +12,7 @@ import com.company.grc.repository.Gstr7FilingDetailRepository;
 import com.company.grc.entity.PanHsnConfigEntity;
 import com.company.grc.entity.HsnCategoryEntity;
 import com.company.grc.rule.GrcRuleEngine;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import org.springframework.data.domain.Pageable;
@@ -27,6 +28,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 public class GrcCalculationService {
 
@@ -141,17 +143,15 @@ public class GrcCalculationService {
     /** Formats the human-readable GSTR-7 filing status string for API consumers. */
     private String buildGstr7FilingStatus(String status, Integer delayCount, Integer missedCount) {
         if (status == null || status.isBlank()) return "NA";
+        int d = (delayCount != null) ? delayCount : 0;
+        int m = (missedCount != null) ? missedCount : 0;
         return switch (status.trim()) {
-            case "Regular without delay" -> "Regular without delay";
+            case "Regular without delay" -> "Regular";
             case "Regular with Delay" -> {
-                int d = (delayCount != null) ? delayCount : 0;
-                yield "Regular with " + d + " delay" + (d == 1 ? "" : "s");
+                String base = "Regular with " + d + " delay" + (d == 1 ? "" : "s");
+                yield m > 0 ? base + " and " + m + " missed" : base;
             }
-            case "Missed" -> {
-                int m = (missedCount != null) ? missedCount : 0;
-                yield m + " missed";
-            }
-            case "Processing" -> "Processing";
+            case "Missed" -> m + " missed";
             case "NA" -> "NA";
             default -> status;
         };
@@ -250,7 +250,16 @@ public class GrcCalculationService {
     @Transactional(readOnly = true)
     public List<ApiDto.GstAppDetailsResponse> getAllDetailsWithScores() {
         List<GstDetailsEntity> allDetails = gstDetailsRepository.findAll();
-        Map<String, GrcScoreEntity> scoreMap = grcScoreRepository.findAll().stream()
+        List<GrcScoreEntity> allScores = grcScoreRepository.findAll();
+        log.info("[Score] grc_score rows={}, gst_details rows={}", allScores.size(), allDetails.size());
+        if (!allScores.isEmpty()) {
+            GrcScoreEntity sample = allScores.get(0);
+            log.info("[Score] sample grc_score gstin='{}' score={}", sample.getGstin(), sample.getScore());
+        }
+        if (!allDetails.isEmpty()) {
+            log.info("[Score] sample gst_details gstin='{}'", allDetails.get(0).getGstin());
+        }
+        Map<String, GrcScoreEntity> scoreMap = allScores.stream()
                 .collect(Collectors.toMap(GrcScoreEntity::getGstin, s -> s));
 
         Map<String, PanHsnConfigEntity> panConfigMap = panHsnConfigRepository.findAll().stream()
