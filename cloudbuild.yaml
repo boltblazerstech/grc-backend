@@ -1,0 +1,46 @@
+steps:
+  # ─── Step 1: Build Docker image ─────────────────────────────────────────────
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-image'
+    args:
+      - 'build'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/${_PROJECT_ID}/${_REPO_NAME}/${_SERVICE_NAME}:$COMMIT_SHA'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/${_PROJECT_ID}/${_REPO_NAME}/${_SERVICE_NAME}:latest'
+      - '.'
+
+  # ─── Step 2: Push image to Artifact Registry ─────────────────────────────────
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-image'
+    waitFor: ['build-image']
+    args:
+      - 'push'
+      - '--all-tags'
+      - '${_REGION}-docker.pkg.dev/${_PROJECT_ID}/${_REPO_NAME}/${_SERVICE_NAME}'
+
+  # ─── Step 3: Deploy to Cloud Run ─────────────────────────────────────────────
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-cloud-run'
+    waitFor: ['push-image']
+    entrypoint: 'gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - '${_SERVICE_NAME}'
+      - '--image=${_REGION}-docker.pkg.dev/${_PROJECT_ID}/${_REPO_NAME}/${_SERVICE_NAME}:$COMMIT_SHA'
+      - '--region=${_REGION}'
+      - '--platform=managed'
+      - '--quiet'
+
+# Substitution variable defaults (overridable from Cloud Build trigger dashboard)
+# ℹ️  All env vars (DB, API keys, etc.) are set directly in Cloud Run console
+#    and are preserved automatically across every deployment.
+substitutions:
+  _PROJECT_ID: 'scrapdms-496614'
+  _REGION: 'asia-south1'
+  _SERVICE_NAME: 'grc-backend'
+  _REPO_NAME: 'grc-backend'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
