@@ -148,8 +148,10 @@ public class GrcCalculationService {
         return switch (status.trim()) {
             case "Regular without delay" -> "Regular";
             case "Regular with Delay" -> {
-                String base = "Regular with " + d + " delay" + (d == 1 ? "" : "s");
-                yield m > 0 ? base + " and " + m + " missed" : base;
+                if (m > 0) {
+                    yield d + " delay" + (d == 1 ? "" : "s") + " and " + m + " missed";
+                }
+                yield "Regular with " + d + " delay" + (d == 1 ? "" : "s");
             }
             case "Missed" -> m + " missed";
             case "NA" -> "NA";
