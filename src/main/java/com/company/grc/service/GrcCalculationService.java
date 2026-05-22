@@ -146,7 +146,7 @@ public class GrcCalculationService {
         int d = (delayCount != null) ? delayCount : 0;
         int m = (missedCount != null) ? missedCount : 0;
         return switch (status.trim()) {
-            case "Regular without delay" -> "Regular";
+            case "Regular without delay" -> "Regular with no delays";
             case "Regular with Delay" -> {
                 if (m > 0) {
                     yield d + " delay" + (d == 1 ? "" : "s") + " and " + m + " missed";
