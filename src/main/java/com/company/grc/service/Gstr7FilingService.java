@@ -75,14 +75,33 @@ public class Gstr7FilingService {
         Map<YearMonth, FilingPreviewItem> itemMap = items.stream()
                 .collect(Collectors.toMap(i -> YearMonth.parse(i.returnPeriod()), i -> i));
 
+        List<Gstr7FilingDetailEntity> existing = filingDetailRepository.findByGstinOrderByReturnPeriodDesc(gstin);
+        Map<YearMonth, Gstr7FilingDetailEntity> existingMap = existing.stream()
+                .filter(e -> {
+                    try { YearMonth.parse(e.getReturnPeriod()); return true; } catch (Exception ex) { return false; }
+                })
+                .collect(Collectors.toMap(e -> YearMonth.parse(e.getReturnPeriod()), e -> e, (a, b) -> a));
+
         // month-1 is optional before the 11th: save if provided, but don't mark as Missed if absent
         YearMonth optionalPeriod = getOptionalPeriod();
 
-        // Build the final list; skip optional period if it was not in the pasted data
+        // Build the final list; skip optional period if it was not in the pasted data or db
         List<FilingPreviewItem> finalItems = relevant.stream()
-                .filter(p -> itemMap.containsKey(p) || !p.equals(optionalPeriod))
+                .filter(p -> itemMap.containsKey(p) || existingMap.containsKey(p) || !p.equals(optionalPeriod))
                 .map(p -> {
                     if (itemMap.containsKey(p)) return itemMap.get(p);
+                    if (existingMap.containsKey(p)) {
+                        Gstr7FilingDetailEntity e = existingMap.get(p);
+                        String label = p.getMonth().getDisplayName(TextStyle.SHORT, Locale.ENGLISH) + " " + p.getYear();
+                        return new FilingPreviewItem(
+                                e.getReturnPeriod(),
+                                label,
+                                e.getDateOfFiling() != null ? e.getDateOfFiling().toString() : null,
+                                e.getDueDate() != null ? e.getDueDate().toString() : null,
+                                e.getStatus(),
+                                e.getDelayDays()
+                        );
+                    }
                     String label = p.getMonth().getDisplayName(TextStyle.SHORT, Locale.ENGLISH) + " " + p.getYear();
                     return new FilingPreviewItem(p.toString(), label, null, null, "Missed", 0);
                 })
@@ -126,9 +145,6 @@ public class Gstr7FilingService {
      */
     @Transactional
     public void saveFilingDetails(String gstin, List<GeminiService.ParsedRecord> records) {
-        filingDetailRepository.deleteByGstin(gstin);
-        filingDetailRepository.flush(); // Ensure delete is executed before inserts
-
         YearMonth earliest = records.stream()
                 .map(r -> {
                     try { return YearMonth.parse(r.returnPeriod()); }
@@ -139,7 +155,25 @@ public class Gstr7FilingService {
                 .orElse(null);
         List<YearMonth> relevant = getRelevantPeriods(earliest);
 
-        // Filter by relevant periods AND de-duplicate by returnPeriod
+        // Fetch existing records for this GSTIN
+        List<Gstr7FilingDetailEntity> existing = filingDetailRepository.findByGstinOrderByReturnPeriodDesc(gstin);
+        Map<String, Gstr7FilingDetailEntity> existingMap = existing.stream()
+                .collect(Collectors.toMap(Gstr7FilingDetailEntity::getReturnPeriod, e -> e, (a, b) -> a));
+
+        // Delete old records outside the 12-month window
+        for (Gstr7FilingDetailEntity e : existing) {
+            try {
+                YearMonth ym = YearMonth.parse(e.getReturnPeriod());
+                if (!relevant.contains(ym)) {
+                    filingDetailRepository.delete(e);
+                }
+            } catch (Exception ex) {
+                filingDetailRepository.delete(e);
+            }
+        }
+        filingDetailRepository.flush();
+
+        // Filter by relevant periods AND de-duplicate by returnPeriod for Gemini records
         Map<String, GeminiService.ParsedRecord> uniqueRecords = new HashMap<>();
         for (GeminiService.ParsedRecord r : records) {
             try {
@@ -159,13 +193,12 @@ public class Gstr7FilingService {
         for (YearMonth p : relevant) {
             String periodStr = p.toString();
             GeminiService.ParsedRecord rec = uniqueRecords.get(periodStr);
+            Gstr7FilingDetailEntity prev = existingMap.get(periodStr);
 
-            if (rec == null) {
-                // Data not provided in paste
-                if (p.equals(optionalPeriod)) {
-                    continue; // optional period is not counted as missed
-                }
-                // Mandatory period is missing -> save explicitly as Missed
+            if (rec == null && prev == null) {
+                // Rule 4: Not in Gemini, Not in DB -> Create Missed
+                if (p.equals(optionalPeriod)) continue; // optional period is not counted as missed
+                
                 LocalDate dueDate = calculateDueDate(periodStr);
                 Gstr7FilingDetailEntity entity = Gstr7FilingDetailEntity.builder()
                         .gstin(gstin)
@@ -176,8 +209,11 @@ public class Gstr7FilingService {
                 entity.setStatus("Missed");
                 entity.setDelayDays(0);
                 filingDetailRepository.save(entity);
-            } else {
-                // Data was provided
+            } else if (rec == null && prev != null) {
+                // Rule 1: Not in Gemini, But in DB -> Keep DB record as is (already saved)
+                // Just keep it.
+            } else if (rec != null && prev == null) {
+                // Rule 2: In Gemini, Not in DB -> Create new record from Gemini
                 LocalDate dueDate = calculateDueDate(rec.returnPeriod());
                 LocalDate filingDate = rec.dateOfFiling() != null && !rec.dateOfFiling().isBlank()
                         ? LocalDate.parse(rec.dateOfFiling())
@@ -189,12 +225,25 @@ public class Gstr7FilingService {
                         .gstin(gstin)
                         .returnPeriod(rec.returnPeriod())
                         .build();
-
                 entity.setDueDate(dueDate);
                 entity.setDateOfFiling(filingDate);
                 entity.setStatus(status);
                 entity.setDelayDays(delayDays);
                 filingDetailRepository.save(entity);
+            } else if (rec != null && prev != null) {
+                // Rule 3: In Gemini, In DB -> Replace DB record with Gemini data
+                LocalDate dueDate = calculateDueDate(rec.returnPeriod());
+                LocalDate filingDate = rec.dateOfFiling() != null && !rec.dateOfFiling().isBlank()
+                        ? LocalDate.parse(rec.dateOfFiling())
+                        : null;
+                String status = deriveStatus(filingDate, dueDate);
+                int delayDays = deriveDelayDays(filingDate, dueDate);
+
+                prev.setDueDate(dueDate);
+                prev.setDateOfFiling(filingDate);
+                prev.setStatus(status);
+                prev.setDelayDays(delayDays);
+                filingDetailRepository.save(prev);
             }
         }
 

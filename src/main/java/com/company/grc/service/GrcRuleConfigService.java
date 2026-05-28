@@ -31,8 +31,8 @@ public class GrcRuleConfigService {
     public static final Map<String, Object[]> DEFAULTS = new LinkedHashMap<>();
     static {
         // [configValue, description]
-        DEFAULTS.put("TYPE_MAX",          new Object[]{10.0, "Type Rule — Max score"});
-        DEFAULTS.put("TYPE_PUBLIC_MULT",  new Object[]{0.0,  "Type Rule — Public Limited multiplier"});
+        DEFAULTS.put("TYPE_MAX",          new Object[]{5.0,  "Type Rule — Max score"});
+        DEFAULTS.put("TYPE_PUBLIC_MULT",  new Object[]{0.1,  "Type Rule — Public Limited multiplier"});
         DEFAULTS.put("TYPE_PRIVATE_MULT", new Object[]{0.25, "Type Rule — Private Limited multiplier"});
         DEFAULTS.put("TYPE_PARTNER_MULT", new Object[]{0.5,  "Type Rule — Partnership multiplier"});
         DEFAULTS.put("TYPE_PROPR_MULT",   new Object[]{1.0,  "Type Rule — Proprietorship multiplier"});
@@ -43,26 +43,33 @@ public class GrcRuleConfigService {
         DEFAULTS.put("REG_LT1_MULT",      new Object[]{1.0,  "Registration Date — < 1 year multiplier"});
         DEFAULTS.put("REG_1TO3_MULT",     new Object[]{0.75, "Registration Date — 1–3 years multiplier"});
         DEFAULTS.put("REG_3TO5_MULT",     new Object[]{0.5,  "Registration Date — 3–5 years multiplier"});
-        DEFAULTS.put("REG_GT5_MULT",      new Object[]{0.0,  "Registration Date — > 5 years multiplier"});
+        DEFAULTS.put("REG_GT5_MULT",      new Object[]{0.1,  "Registration Date — > 5 years multiplier"});
 
         DEFAULTS.put("TRN_MAX",           new Object[]{5.0,  "Turnover — Max score"});
         DEFAULTS.put("TRN_LT50_MULT",     new Object[]{1.0,  "Turnover — < 50 Cr multiplier"});
         DEFAULTS.put("TRN_50TO100_MULT",  new Object[]{0.5,  "Turnover — 50–100 Cr multiplier"});
-        DEFAULTS.put("TRN_GT100_MULT",    new Object[]{0.0,  "Turnover — > 100 Cr multiplier"});
+        DEFAULTS.put("TRN_GT100_MULT",    new Object[]{0.1,  "Turnover — > 100 Cr multiplier"});
 
-        DEFAULTS.put("STS_MAX",           new Object[]{35.0, "GSTN Status — Max score"});
+        DEFAULTS.put("STS_MAX",           new Object[]{30.0, "GSTN Status — Max score"});
         DEFAULTS.put("STS_ACTIVE_MULT",   new Object[]{0.0,  "GSTN Status — Active multiplier"});
         DEFAULTS.put("STS_CANCEL_MULT",   new Object[]{1.0,  "GSTN Status — Cancelled multiplier"});
 
-        DEFAULTS.put("G1_MAX",            new Object[]{20.0, "GSTR-1 Filing — Max score"});
+        DEFAULTS.put("G1_MAX",            new Object[]{15.0, "GSTR-1 Filing — Max score"});
         DEFAULTS.put("G1_THRESHOLD",      new Object[]{1.0,  "GSTR-1 Filing — Delay threshold (count)"});
         DEFAULTS.put("G1_OK_MULT",        new Object[]{0.0,  "GSTR-1 Filing — On-time multiplier"});
         DEFAULTS.put("G1_DELAY_MULT",     new Object[]{1.0,  "GSTR-1 Filing — Delayed multiplier"});
 
-        DEFAULTS.put("G3B_MAX",           new Object[]{20.0, "GSTR-3B Filing — Max score"});
+        DEFAULTS.put("G3B_MAX",           new Object[]{25.0, "GSTR-3B Filing — Max score"});
         DEFAULTS.put("G3B_THRESHOLD",     new Object[]{1.0,  "GSTR-3B Filing — Delay threshold (count)"});
         DEFAULTS.put("G3B_OK_MULT",       new Object[]{0.0,  "GSTR-3B Filing — On-time multiplier"});
         DEFAULTS.put("G3B_DELAY_MULT",    new Object[]{1.0,  "GSTR-3B Filing — Delayed multiplier"});
+
+        DEFAULTS.put("G7_MAX",                 new Object[]{10.0, "GSTR-7 Filing — Max score"});
+        DEFAULTS.put("G7_REGULAR_MULT",        new Object[]{0.0,  "GSTR-7 Filing — Regular (0 Missed, 0 Delayed)"});
+        DEFAULTS.put("G7_DELAYED_MULT",        new Object[]{0.3,  "GSTR-7 Filing — Delayed (0 Missed, >0 Delayed)"});
+        DEFAULTS.put("G7_MISSED_MULT",         new Object[]{0.5,  "GSTR-7 Filing — Missed (>0 Missed, 0 Delayed)"});
+        DEFAULTS.put("G7_MISSED_DELAYED_MULT", new Object[]{0.8,  "GSTR-7 Filing — Missed & Delayed (>0 Missed, >0 Delayed)"});
+        DEFAULTS.put("G7_NA_MULT",             new Object[]{0.3,  "GSTR-7 Filing — NA status"});
 
         DEFAULTS.put("COLOR_RED_THRESHOLD",    new Object[]{30.0, "Color Coding — Red Score Threshold"});
         DEFAULTS.put("COLOR_YELLOW_THRESHOLD", new Object[]{20.0, "Color Coding — Yellow Score Threshold"});
@@ -74,14 +81,13 @@ public class GrcRuleConfigService {
     @PostConstruct
     @Transactional
     public void seedDefaults() {
+        // Force update all defaults into the database during migration to the new rules
         DEFAULTS.forEach((key, meta) -> {
-            if (!repo.existsById(key)) {
-                repo.save(GrcRuleConfigEntity.builder()
-                        .configKey(key)
-                        .configValue((Double) meta[0])
-                        .description((String) meta[1])
-                        .build());
-            }
+            repo.save(GrcRuleConfigEntity.builder()
+                    .configKey(key)
+                    .configValue((Double) meta[0])
+                    .description((String) meta[1])
+                    .build());
         });
         refreshCache();
     }

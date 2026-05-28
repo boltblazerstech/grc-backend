@@ -34,7 +34,7 @@ public class GstTenureRule implements GrcRule {
         if (years < 1)       multiplier = cfg.getOrDefault("REG_LT1_MULT",  1.0);
         else if (years < 3)  multiplier = cfg.getOrDefault("REG_1TO3_MULT", 0.75);
         else if (years <= 5) multiplier = cfg.getOrDefault("REG_3TO5_MULT", 0.5);
-        else                 multiplier = cfg.getOrDefault("REG_GT5_MULT",  0.0);
+        else                 multiplier = cfg.getOrDefault("REG_GT5_MULT",  0.1);
         return BigDecimal.valueOf(maxScore * multiplier);
     }
 }

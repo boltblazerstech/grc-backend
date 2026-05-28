@@ -25,7 +25,7 @@ public class GstStatusRule implements GrcRule {
     @Override
     public BigDecimal apply(GstDetailsEntity entity) {
         Map<String, Double> cfg = configService.getConfigMap();
-        double maxScore = cfg.getOrDefault("STS_MAX", 35.0);
+        double maxScore = cfg.getOrDefault("STS_MAX", 30.0);
         String status = entity.getGstStatus() == null ? "" : entity.getGstStatus().toLowerCase();
         double multiplier = "active".equals(status)
                 ? cfg.getOrDefault("STS_ACTIVE_MULT", 0.0)

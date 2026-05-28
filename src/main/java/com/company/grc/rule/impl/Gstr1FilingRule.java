@@ -25,7 +25,7 @@ public class Gstr1FilingRule implements GrcRule {
     @Override
     public BigDecimal apply(GstDetailsEntity entity) {
         Map<String, Double> cfg = configService.getConfigMap();
-        double maxScore = cfg.getOrDefault("G1_MAX", 20.0);
+        double maxScore = cfg.getOrDefault("G1_MAX", 15.0);
         double threshold = cfg.getOrDefault("G1_THRESHOLD", 1.0);
         double okMult = cfg.getOrDefault("G1_OK_MULT", 0.0);
         double delayMult = cfg.getOrDefault("G1_DELAY_MULT", 1.0);

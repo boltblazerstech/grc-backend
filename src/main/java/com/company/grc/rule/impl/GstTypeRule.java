@@ -25,12 +25,12 @@ public class GstTypeRule implements GrcRule {
     @Override
     public BigDecimal apply(GstDetailsEntity entity) {
         Map<String, Double> cfg = configService.getConfigMap();
-        double maxScore = cfg.getOrDefault("TYPE_MAX", 10.0);
+        double maxScore = cfg.getOrDefault("TYPE_MAX", 5.0);
         String type = entity.getGstType() == null ? "" : entity.getGstType().toLowerCase();
 
         double multiplier;
         if (type.contains("public")) {
-            multiplier = cfg.getOrDefault("TYPE_PUBLIC_MULT", 0.0);
+            multiplier = cfg.getOrDefault("TYPE_PUBLIC_MULT", 0.1);
         } else if (type.contains("private")) {
             multiplier = cfg.getOrDefault("TYPE_PRIVATE_MULT", 0.25);
         } else if (type.contains("partner")) {

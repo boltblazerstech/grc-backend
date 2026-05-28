@@ -30,7 +30,7 @@ public class TurnoverRule implements GrcRule {
         if (raw == null || raw.isBlank()) return BigDecimal.valueOf(maxScore);
         double turnoverCr = parseTurnoverCr(raw);
         double multiplier;
-        if (turnoverCr > 100)      multiplier = cfg.getOrDefault("TRN_GT100_MULT",   0.0);
+        if (turnoverCr > 100)      multiplier = cfg.getOrDefault("TRN_GT100_MULT",   0.1);
         else if (turnoverCr >= 50) multiplier = cfg.getOrDefault("TRN_50TO100_MULT", 0.5);
         else                       multiplier = cfg.getOrDefault("TRN_LT50_MULT",    1.0);
         return BigDecimal.valueOf(maxScore * multiplier);
