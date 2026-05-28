@@ -9,6 +9,7 @@ import com.company.grc.repository.GstDetailsRepository;
 import com.company.grc.repository.PanHsnConfigRepository;
 import com.company.grc.repository.HsnCategoryRepository;
 import com.company.grc.repository.Gstr7FilingDetailRepository;
+import com.company.grc.repository.Gstr7ReviewRepository;
 import com.company.grc.entity.PanHsnConfigEntity;
 import com.company.grc.entity.HsnCategoryEntity;
 import com.company.grc.rule.GrcRuleEngine;
@@ -40,6 +41,7 @@ public class GrcCalculationService {
     private final PanHsnConfigRepository panHsnConfigRepository;
     private final HsnCategoryRepository hsnCategoryRepository;
     private final Gstr7FilingDetailRepository gstr7FilingDetailRepository;
+    private final Gstr7ReviewRepository gstr7ReviewRepository;
 
     @Autowired
     public GrcCalculationService(GstFetchService gstFetchService,
@@ -49,7 +51,8 @@ public class GrcCalculationService {
             GrcScoreConfig config,
             PanHsnConfigRepository panHsnConfigRepository,
             HsnCategoryRepository hsnCategoryRepository,
-            Gstr7FilingDetailRepository gstr7FilingDetailRepository) {
+            Gstr7FilingDetailRepository gstr7FilingDetailRepository,
+            Gstr7ReviewRepository gstr7ReviewRepository) {
         this.gstFetchService = gstFetchService;
         this.ruleEngine = ruleEngine;
         this.grcScoreRepository = grcScoreRepository;
@@ -58,6 +61,7 @@ public class GrcCalculationService {
         this.panHsnConfigRepository = panHsnConfigRepository;
         this.hsnCategoryRepository = hsnCategoryRepository;
         this.gstr7FilingDetailRepository = gstr7FilingDetailRepository;
+        this.gstr7ReviewRepository = gstr7ReviewRepository;
     }
 
     /**
@@ -441,6 +445,8 @@ public class GrcCalculationService {
 
     @Transactional
     public void deleteGstDetails(String gstin) {
+        gstr7FilingDetailRepository.deleteByGstin(gstin);
+        gstr7ReviewRepository.deleteByGstin(gstin);
         grcScoreRepository.deleteById(gstin);
         gstDetailsRepository.deleteById(gstin);
     }

@@ -9,4 +9,5 @@ import java.util.List;
 @Repository
 public interface Gstr7ReviewRepository extends JpaRepository<Gstr7ReviewEntity, Long> {
     List<Gstr7ReviewEntity> findByStatusOrderBySubmittedAtDesc(String status);
+    void deleteByGstin(String gstin);
 }
