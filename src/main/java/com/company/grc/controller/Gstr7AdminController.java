@@ -58,6 +58,18 @@ public class Gstr7AdminController {
         return ResponseEntity.ok(config);
     }
 
+    @PostMapping("/tds/{pan}")
+    public ResponseEntity<?> setTdsApplicablePost(
+            @PathVariable String pan,
+            @RequestBody TdsApplicableRequest request,
+            @RequestHeader(value = "Role", required = false) String role) {
+        if (isNotAdmin(role)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Access denied. super_admin role required.");
+        }
+        PanHsnConfigEntity config = gstr7Service.setTdsApplicability(pan, request.getIsApplicable(), request.getUpdatedBy());
+        return ResponseEntity.ok(config);
+    }
+
     @PutMapping("/gstd/{gstin}")
     public ResponseEntity<?> markUnmarkGstd(
             @PathVariable String gstin,
