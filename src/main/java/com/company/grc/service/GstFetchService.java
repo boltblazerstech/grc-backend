@@ -151,12 +151,17 @@ public class GstFetchService {
     }
 
     private void mapApiDataToEntity(GstDetailsEntity entity, DeepvueGstDto.DataPayload data) {
+        System.out.println("[GstFetchService] mapping GSTIN=" + entity.getGstin()
+                + " aadhaar_validation=" + data.getAadhaarValidation()
+                + " core_activity=" + data.getNatureOfCoreBusinessActivityDescription());
         entity.setTradeName(data.getBusinessName());
         entity.setLegalName(data.getLegalName());
         entity.setGstType(data.getConstitutionOfBusiness());
         entity.setGstStatus(data.getGstinStatus());
         entity.setAggregateTurnover(cleanTurnover(data.getAnnualTurnover()));
         entity.setPanNumber(data.getPanNumber());
+        entity.setAadhaarValidation(data.getAadhaarValidation());
+        entity.setCoreActivity(data.getNatureOfCoreBusinessActivityDescription());
 
         if (data.getDateOfRegistration() != null && !data.getDateOfRegistration().isBlank()
                 && !data.getDateOfRegistration().startsWith("1800")) {

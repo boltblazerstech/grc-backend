@@ -191,7 +191,9 @@ public class GrcCalculationService {
                 .gstr7Status(details.getGstr7Status())
                 .gstr7DelayCount(details.getGstr7DelayCount())
                 .gstr7MissedCount(details.getGstr7MissedCount())
-                .gstr7LastUpdated(details.getGstr7LastUpdated());
+                .gstr7LastUpdated(details.getGstr7LastUpdated())
+                .aadhaarValidation(details.getAadhaarValidation())
+                .coreActivity(details.getCoreActivity());
 
         gstr7FilingDetailRepository.findByGstinOrderByReturnPeriodDesc(gstin).stream().findFirst()
                 .ifPresent(f -> builder.gstr7LastReturnPeriod(f.getReturnPeriod()));
@@ -310,6 +312,8 @@ public class GrcCalculationService {
                                     .gstr7DelayCount(details.getGstr7DelayCount())
                                     .gstr7MissedCount(details.getGstr7MissedCount())
                                     .gstr7LastUpdated(details.getGstr7LastUpdated())
+                                    .aadhaarValidation(details.getAadhaarValidation())
+                                    .coreActivity(details.getCoreActivity())
                                     .gstr7LastReturnPeriod(lastReturnPeriodMap.get(details.getGstin()));
 
                     String pan = details.getPanNumber();

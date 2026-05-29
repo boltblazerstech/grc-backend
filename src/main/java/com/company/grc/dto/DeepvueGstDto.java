@@ -48,6 +48,8 @@ public class DeepvueGstDto {
         private String annualTurnoverFy;
         @JsonProperty("nature_of_core_business_activity_description")
         private String natureOfCoreBusinessActivityDescription;
+        @JsonProperty("aadhaar_validation")
+        private String aadhaarValidation;
         private List<String> promoters;
         @JsonProperty("filing_status")
         private List<List<FilingEntry>> filingStatus;

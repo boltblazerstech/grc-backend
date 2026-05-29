@@ -60,6 +60,9 @@ public class ApiDto {
         private String mobile;
         private String email;
         private LocalDateTime createdAt;
+        
+        private String aadhaarValidation;
+        private String coreActivity;
 
         // GSTR-7 specific fields
         private String gstdNo;

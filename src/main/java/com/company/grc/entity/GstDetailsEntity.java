@@ -98,4 +98,10 @@ public class GstDetailsEntity {
     @Column(name = "pan_number", length = 15)
     private String panNumber;
 
+    @Column(name = "aadhaar_validation", length = 10)
+    private String aadhaarValidation;
+
+    @Column(name = "core_activity")
+    private String coreActivity;
+
 }
