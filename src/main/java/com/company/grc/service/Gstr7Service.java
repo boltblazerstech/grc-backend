@@ -50,12 +50,8 @@ public class Gstr7Service {
                 .orElseThrow(() -> new IllegalArgumentException("GSTIN not found: " + gstin));
 
         if (gstdNo != null && !gstdNo.trim().isEmpty()) {
-            gstDetails.setGstType("GSTD");
             gstDetails.setGstdNo(gstdNo.trim());
         } else {
-            if ("GSTD".equals(gstDetails.getGstType())) {
-                gstDetails.setGstType(null);
-            }
             gstDetails.setGstdNo(null);
         }
 
