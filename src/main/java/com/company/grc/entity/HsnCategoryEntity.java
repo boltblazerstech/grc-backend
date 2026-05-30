@@ -31,7 +31,7 @@ public class HsnCategoryEntity {
     @ToString.Exclude
     @EqualsAndHashCode.Exclude
     @JsonManagedReference
-    @OneToMany(mappedBy = "category", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @OneToMany(mappedBy = "category", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private List<Gstr7HsnMasterEntity> codes;
 
     @PrePersist
