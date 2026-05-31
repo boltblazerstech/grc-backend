@@ -160,18 +160,7 @@ public class Gstr7FilingService {
         Map<String, Gstr7FilingDetailEntity> existingMap = existing.stream()
                 .collect(Collectors.toMap(Gstr7FilingDetailEntity::getReturnPeriod, e -> e, (a, b) -> a));
 
-        // Delete old records outside the 12-month window
-        for (Gstr7FilingDetailEntity e : existing) {
-            try {
-                YearMonth ym = YearMonth.parse(e.getReturnPeriod());
-                if (!relevant.contains(ym)) {
-                    filingDetailRepository.delete(e);
-                }
-            } catch (Exception ex) {
-                filingDetailRepository.delete(e);
-            }
-        }
-        filingDetailRepository.flush();
+        // Note: We used to delete records outside the 12-month window here, but we now retain all history.
 
         // Filter by relevant periods AND de-duplicate by returnPeriod for Gemini records
         Map<String, GeminiService.ParsedRecord> uniqueRecords = new HashMap<>();
@@ -511,8 +500,9 @@ public class Gstr7FilingService {
         // Always go up to month-1; the optional-period check handles the before-11th case
         YearMonth latest = YearMonth.from(today.minusMonths(1));
 
-        YearMonth start = latest.minusMonths(11);
-        if (earliestFilingMonth != null && earliestFilingMonth.isAfter(start)) {
+        YearMonth start = latest.minusMonths(11); // Default 12 month window
+        // If the user submitted data older than 12 months, expand the window to include it!
+        if (earliestFilingMonth != null && earliestFilingMonth.isBefore(start)) {
             start = earliestFilingMonth;
         }
 
