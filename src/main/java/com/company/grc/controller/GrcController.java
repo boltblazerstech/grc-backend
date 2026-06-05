@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
+import jakarta.persistence.EntityManager;
 
 @RestController
 @RequestMapping("/api/grc")
@@ -20,14 +21,25 @@ public class GrcController {
     private final GrcCalculationService grcCalculationService;
     private final GrcRuleConfigService ruleConfigService;
     private final GstFetchService gstFetchService;
+    private final EntityManager entityManager;
 
     @Autowired
     public GrcController(GrcCalculationService grcCalculationService,
             GrcRuleConfigService ruleConfigService,
-            GstFetchService gstFetchService) {
+            GstFetchService gstFetchService,
+            EntityManager entityManager) {
         this.grcCalculationService = grcCalculationService;
         this.ruleConfigService = ruleConfigService;
         this.gstFetchService = gstFetchService;
+        this.entityManager = entityManager;
+    }
+
+    @GetMapping("/debug-search")
+    public ResponseEntity<?> debugSearch(@RequestParam String term) {
+        List<?> results = entityManager.createNativeQuery("SELECT gstin FROM gst_details WHERE gstin LIKE :term")
+            .setParameter("term", "%" + term + "%")
+            .getResultList();
+        return ResponseEntity.ok(results);
     }
 
     @PostMapping("/calculate")
