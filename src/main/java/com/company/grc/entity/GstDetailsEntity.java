@@ -104,4 +104,10 @@ public class GstDetailsEntity {
     @Column(name = "core_activity")
     private String coreActivity;
 
+    @jakarta.persistence.PrePersist
+    protected void onCreate() {
+        if (createdAt == null) {
+            createdAt = LocalDateTime.now();
+        }
+    }
 }

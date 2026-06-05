@@ -160,7 +160,17 @@ public class Gstr7FilingService {
         Map<String, Gstr7FilingDetailEntity> existingMap = existing.stream()
                 .collect(Collectors.toMap(Gstr7FilingDetailEntity::getReturnPeriod, e -> e, (a, b) -> a));
 
-        // Note: We used to delete records outside the 12-month window here, but we now retain all history.
+        // Delete records older than the 12-month window
+        YearMonth maxLookback = YearMonth.from(LocalDate.now().minusMonths(1)).minusMonths(11);
+        List<Gstr7FilingDetailEntity> toDelete = existing.stream()
+                .filter(e -> {
+                    try { return YearMonth.parse(e.getReturnPeriod()).isBefore(maxLookback); }
+                    catch (Exception ex) { return false; }
+                })
+                .collect(Collectors.toList());
+        if (!toDelete.isEmpty()) {
+            filingDetailRepository.deleteAll(toDelete);
+        }
 
         // Filter by relevant periods AND de-duplicate by returnPeriod for Gemini records
         Map<String, GeminiService.ParsedRecord> uniqueRecords = new HashMap<>();
@@ -241,12 +251,24 @@ public class Gstr7FilingService {
 
     @Transactional(readOnly = true)
     public List<Gstr7FilingDetailEntity> getFilingDetails(String gstin) {
-        return filingDetailRepository.findByGstinOrderByReturnPeriodDesc(gstin);
+        YearMonth maxLookback = YearMonth.from(LocalDate.now().minusMonths(1)).minusMonths(11);
+        return filingDetailRepository.findByGstinOrderByReturnPeriodDesc(gstin).stream()
+                .filter(e -> {
+                    try { return !YearMonth.parse(e.getReturnPeriod()).isBefore(maxLookback); }
+                    catch (Exception ex) { return true; }
+                })
+                .collect(Collectors.toList());
     }
 
     @Transactional(readOnly = true)
     public List<Gstr7FilingDetailEntity> getAllFilingDetails() {
-        return filingDetailRepository.findAll();
+        YearMonth maxLookback = YearMonth.from(LocalDate.now().minusMonths(1)).minusMonths(11);
+        return filingDetailRepository.findAll().stream()
+                .filter(e -> {
+                    try { return !YearMonth.parse(e.getReturnPeriod()).isBefore(maxLookback); }
+                    catch (Exception ex) { return true; }
+                })
+                .collect(Collectors.toList());
     }
 
     // ── Review Workflow ─────────────────────────────────────────────────────
@@ -500,9 +522,14 @@ public class Gstr7FilingService {
         // Always go up to month-1; the optional-period check handles the before-11th case
         YearMonth latest = YearMonth.from(today.minusMonths(1));
 
-        YearMonth start = latest.minusMonths(11); // Default 12 month window
-        // If the user submitted data older than 12 months, expand the window to include it!
-        if (earliestFilingMonth != null && earliestFilingMonth.isBefore(start)) {
+        // The maximum window we ever care about is 12 months (latest - 11 months)
+        YearMonth maxLookback = latest.minusMonths(11);
+        
+        YearMonth start = maxLookback;
+        
+        // If the earliest record is within the 12 month window (e.g. 6 months ago),
+        // we only validate starting from that earliest record.
+        if (earliestFilingMonth != null && earliestFilingMonth.isAfter(maxLookback)) {
             start = earliestFilingMonth;
         }
 
