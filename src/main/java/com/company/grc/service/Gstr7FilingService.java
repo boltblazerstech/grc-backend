@@ -441,6 +441,12 @@ public class Gstr7FilingService {
 
         GstDetailsEntity entity = optGst.get();
         String pan = entity.getPanNumber();
+        if (pan != null) pan = pan.trim().toUpperCase();
+
+        // Fallback to deriving PAN from GSTIN if missing or invalid (same as GrcCalculationService)
+        if ((pan == null || pan.length() < 10) && gstin != null && gstin.length() >= 12) {
+            pan = gstin.substring(2, 12).toUpperCase();
+        }
 
         boolean isApplicable = panHsnConfigRepository.findById(pan != null ? pan : "")
                 .map(cfg -> Boolean.TRUE.equals(cfg.getIsApplicable()))

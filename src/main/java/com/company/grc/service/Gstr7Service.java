@@ -27,6 +27,7 @@ public class Gstr7Service {
 
     @Transactional
     public PanHsnConfigEntity saveOrUpdateHsn(String pan, Long categoryId, String updatedBy) {
+        pan = pan != null ? pan.trim().toUpperCase() : pan;
         PanHsnConfigEntity config = panHsnConfigRepository.findById(pan)
                 .orElse(new PanHsnConfigEntity());
         config.setPan(pan);
@@ -77,6 +78,7 @@ public class Gstr7Service {
 
     @Transactional
     public PanHsnConfigEntity setTdsApplicability(String pan, Boolean isApplicable, String updatedBy) {
+        pan = pan != null ? pan.trim().toUpperCase() : pan;
         PanHsnConfigEntity config = panHsnConfigRepository.findById(pan)
                 .orElse(new PanHsnConfigEntity());
         config.setPan(pan);

@@ -42,6 +42,12 @@ public class GrcController {
         return ResponseEntity.ok(results);
     }
 
+    @GetMapping("/debug-db")
+    public ResponseEntity<?> debugDb() {
+        String dbUrl = (String) entityManager.createNativeQuery("SELECT current_database() || ' @ ' || inet_server_addr()").getSingleResult();
+        return ResponseEntity.ok(dbUrl);
+    }
+
     @PostMapping("/calculate")
     public ResponseEntity<ApiDto.GrcResponse> calculateScore(@RequestBody ApiDto.GrcRequest request) {
         // Validation moved to service, but we trim here for consistency
