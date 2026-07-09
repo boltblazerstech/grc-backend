@@ -491,22 +491,42 @@ public class GrcCalculationService {
             String companyName,
             String gstStatus,
             String dataSource,
+            String gstdNo,
+            Boolean tdsApplicable,
             String gstr7Status,
+            Integer gstr7DelayCount,
+            Integer gstr7MissedCount,
             String createdAt
     ) {}
 
     @Transactional(readOnly = true)
     public List<NewVendorItem> getNewVendors(Pageable pageable) {
-        return gstDetailsRepository.findNewVendors(pageable).stream()
-                .map(g -> new NewVendorItem(
-                        g.getGstin(),
-                        g.getLegalName() != null && !g.getLegalName().isBlank() ? g.getLegalName()
-                                : g.getTradeName() != null ? g.getTradeName() : "",
-                        g.getGstStatus(),
-                        g.getDataSource(),
-                        g.getGstr7Status(),
-                        g.getCreatedAt() != null ? g.getCreatedAt().toString() : null
-                ))
+        List<GstDetailsEntity> vendors = gstDetailsRepository.findNewVendors(pageable);
+
+        Map<String, PanHsnConfigEntity> panConfigMap = panHsnConfigRepository.findAll().stream()
+                .collect(Collectors.toMap(
+                        c -> c.getPan() != null ? c.getPan().trim().toUpperCase() : "",
+                        c -> c,
+                        (a, b) -> a));
+
+        return vendors.stream()
+                .map(g -> {
+                    String pan = g.getPanNumber() != null ? g.getPanNumber().trim().toUpperCase() : "";
+                    PanHsnConfigEntity config = panConfigMap.get(pan);
+                    return new NewVendorItem(
+                            g.getGstin(),
+                            g.getLegalName() != null && !g.getLegalName().isBlank() ? g.getLegalName()
+                                    : g.getTradeName() != null ? g.getTradeName() : "",
+                            g.getGstStatus(),
+                            g.getDataSource(),
+                            g.getGstdNo(),
+                            config != null ? config.getIsApplicable() : null,
+                            g.getGstr7Status(),
+                            g.getGstr7DelayCount(),
+                            g.getGstr7MissedCount(),
+                            g.getCreatedAt() != null ? g.getCreatedAt().toString() : null
+                    );
+                })
                 .toList();
     }
 }
