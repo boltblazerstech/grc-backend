@@ -213,6 +213,7 @@ public class GrcCalculationService {
                         builder.categoryName(cat.getName());
                     });
                 }
+                builder.tdsApplicable(config.getIsApplicable());
             });
         }
 
@@ -271,7 +272,10 @@ public class GrcCalculationService {
                 .collect(Collectors.toMap(GrcScoreEntity::getGstin, s -> s));
 
         Map<String, PanHsnConfigEntity> panConfigMap = panHsnConfigRepository.findAll().stream()
-                .collect(Collectors.toMap(PanHsnConfigEntity::getPan, c -> c));
+                .collect(Collectors.toMap(
+                        c -> c.getPan() != null ? c.getPan().trim().toUpperCase() : "",
+                        c -> c,
+                        (a, b) -> a));
 
         Map<Long, HsnCategoryEntity> categoryMap = hsnCategoryRepository.findAll().stream()
                 .collect(Collectors.toMap(HsnCategoryEntity::getId, c -> c));
@@ -325,11 +329,14 @@ public class GrcCalculationService {
 
                     if (pan != null) {
                         PanHsnConfigEntity config = panConfigMap.get(pan);
-                        if (config != null && config.getCategoryId() != null) {
-                            HsnCategoryEntity cat = categoryMap.get(config.getCategoryId());
-                            if (cat != null) {
-                                builder.categoryName(cat.getName());
+                        if (config != null) {
+                            if (config.getCategoryId() != null) {
+                                HsnCategoryEntity cat = categoryMap.get(config.getCategoryId());
+                                if (cat != null) {
+                                    builder.categoryName(cat.getName());
+                                }
                             }
+                            builder.tdsApplicable(config.getIsApplicable());
                         }
                     }
 

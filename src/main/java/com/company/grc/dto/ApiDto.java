@@ -72,6 +72,7 @@ public class ApiDto {
         private LocalDateTime gstr7LastUpdated;
         private String categoryName;
         private String gstr7LastReturnPeriod;
+        private Boolean tdsApplicable; // null = not yet set, true = Yes, false = No (from pan_hsn_config)
     }
 
     @Data
