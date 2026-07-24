@@ -19,6 +19,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 @Service
 @RequiredArgsConstructor
@@ -53,16 +54,20 @@ public class Gstr7FilingService {
      */
     public FilingPreviewResponse parseAndPreview(String gstin, String tableText) {
         List<GeminiService.ParsedRecord> parsed = geminiService.parseFilingTable(tableText);
-        YearMonth earliest = parsed.stream()
-                .map(r -> {
-                    try { return YearMonth.parse(r.returnPeriod()); }
-                    catch (Exception e) { return null; }
-                })
+
+        List<Gstr7FilingDetailEntity> existing = filingDetailRepository.findByGstinOrderByReturnPeriodDesc(gstin);
+
+        // The window must consider whichever is earlier: the newly pasted data, or what's
+        // already saved. Otherwise pasting only 1-2 recent months collapses the window down
+        // to just those months and previously saved history drops out of the preview.
+        YearMonth earliest = Stream.concat(
+                        parsed.stream().map(r -> tryParseYearMonth(r.returnPeriod())),
+                        existing.stream().map(e -> tryParseYearMonth(e.getReturnPeriod())))
                 .filter(Objects::nonNull)
                 .min(Comparator.naturalOrder())
                 .orElse(null);
         List<YearMonth> relevant = getRelevantPeriods(earliest);
-        
+
         // Convert parsed records to items, filtering by relevant periods
         List<FilingPreviewItem> items = parsed.stream()
                 .filter(r -> {
@@ -75,7 +80,6 @@ public class Gstr7FilingService {
         Map<YearMonth, FilingPreviewItem> itemMap = items.stream()
                 .collect(Collectors.toMap(i -> YearMonth.parse(i.returnPeriod()), i -> i));
 
-        List<Gstr7FilingDetailEntity> existing = filingDetailRepository.findByGstinOrderByReturnPeriodDesc(gstin);
         Map<YearMonth, Gstr7FilingDetailEntity> existingMap = existing.stream()
                 .filter(e -> {
                     try { YearMonth.parse(e.getReturnPeriod()); return true; } catch (Exception ex) { return false; }
@@ -145,20 +149,21 @@ public class Gstr7FilingService {
      */
     @Transactional
     public void saveFilingDetails(String gstin, List<GeminiService.ParsedRecord> records) {
-        YearMonth earliest = records.stream()
-                .map(r -> {
-                    try { return YearMonth.parse(r.returnPeriod()); }
-                    catch (Exception e) { return null; }
-                })
-                .filter(Objects::nonNull)
-                .min(Comparator.naturalOrder())
-                .orElse(null);
-        List<YearMonth> relevant = getRelevantPeriods(earliest);
-
         // Fetch existing records for this GSTIN
         List<Gstr7FilingDetailEntity> existing = filingDetailRepository.findByGstinOrderByReturnPeriodDesc(gstin);
         Map<String, Gstr7FilingDetailEntity> existingMap = existing.stream()
                 .collect(Collectors.toMap(Gstr7FilingDetailEntity::getReturnPeriod, e -> e, (a, b) -> a));
+
+        // Same as parseAndPreview: consider whichever is earlier, the incoming records or what's
+        // already saved, so a partial (1-2 month) update doesn't shrink the window and strand
+        // previously saved months outside of it.
+        YearMonth earliest = Stream.concat(
+                        records.stream().map(r -> tryParseYearMonth(r.returnPeriod())),
+                        existing.stream().map(e -> tryParseYearMonth(e.getReturnPeriod())))
+                .filter(Objects::nonNull)
+                .min(Comparator.naturalOrder())
+                .orElse(null);
+        List<YearMonth> relevant = getRelevantPeriods(earliest);
 
         // Delete records older than the 12-month window
         YearMonth maxLookback = YearMonth.from(LocalDate.now().minusMonths(1)).minusMonths(11);
@@ -392,6 +397,11 @@ public class Gstr7FilingService {
     }
 
     // ── helpers ─────────────────────────────────────────────────────────────
+
+    private YearMonth tryParseYearMonth(String returnPeriod) {
+        try { return YearMonth.parse(returnPeriod); }
+        catch (Exception e) { return null; }
+    }
 
     private FilingPreviewItem toPreviewItem(GeminiService.ParsedRecord rec) {
         LocalDate dueDate = calculateDueDate(rec.returnPeriod());
