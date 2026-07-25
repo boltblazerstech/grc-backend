@@ -153,6 +153,25 @@ public class GrcController {
         return ResponseEntity.ok("Successfully removed " + count + " invalid/garbage records.");
     }
 
+    /**
+     * Refreshes a single GSTIN from the Deepvue API and recalculates its score.
+     * Reuses GstFetchService.refreshFromApi via GrcCalculationService.refreshFromApi.
+     * Returns the updated record on success; failures propagate to
+     * GlobalExceptionHandler, which reports them as a structured error response.
+     */
+    @PostMapping("/gstin/{gstin}/refresh")
+    public ResponseEntity<ApiDto.GstAppDetailsResponse> refreshSingleGstin(@PathVariable String gstin) {
+        String trimmed = gstin != null ? gstin.trim() : null;
+        gstFetchService.validateGstin(trimmed);
+
+        Map<String, String> result = grcCalculationService.refreshFromApi(List.of(trimmed), null);
+        String status = result.get(trimmed);
+        if (!"refreshed".equals(status)) {
+            throw new RuntimeException(status != null ? status : "Refresh failed for GSTIN " + trimmed);
+        }
+        return ResponseEntity.ok(grcCalculationService.getDetailsWithScore(trimmed));
+    }
+
     // ── Admin API Refresh Endpoints ───────────────────────────────────────────
 
     @PostMapping("/admin/refresh")
