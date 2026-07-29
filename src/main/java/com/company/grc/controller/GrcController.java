@@ -159,14 +159,50 @@ public class GrcController {
 
     @GetMapping("/admin/diag/gstr7/{gstin}")
     public ResponseEntity<?> diagnosticGstr7(@PathVariable String gstin) {
-        List<Map<String, Object>> results = jdbcTemplate.queryForList(
-            "SELECT tc.constraint_name, tc.constraint_type, kcu.column_name " +
-            "FROM information_schema.table_constraints tc " +
-            "JOIN information_schema.key_column_usage kcu " +
-            "ON tc.constraint_name = kcu.constraint_name " +
-            "WHERE tc.table_name = 'gstr7_filing_details'"
-        );
-        return ResponseEntity.ok(results);
+        try {
+            Map<String, Object> diag = new java.util.HashMap<>();
+            
+            // 1. Constraints
+            List<Map<String, Object>> constraints = jdbcTemplate.queryForList(
+                "SELECT tc.constraint_name, tc.constraint_type, kcu.column_name " +
+                "FROM information_schema.table_constraints tc " +
+                "JOIN information_schema.key_column_usage kcu " +
+                "ON tc.constraint_name = kcu.constraint_name " +
+                "WHERE tc.table_name = 'gstr7_filing_details'"
+            );
+            diag.put("constraints", constraints);
+
+            // 2. Sequence info
+            String seqName = jdbcTemplate.queryForObject(
+                "SELECT pg_get_serial_sequence('gstr7_filing_details', 'id')", String.class);
+            diag.put("sequenceName", seqName);
+
+            if (seqName != null) {
+                Long seqVal = jdbcTemplate.queryForObject("SELECT last_value FROM " + seqName, Long.class);
+                diag.put("sequenceValue", seqVal);
+            } else {
+                // Try guessing the default name
+                try {
+                    Long seqVal = jdbcTemplate.queryForObject("SELECT last_value FROM gstr7_filing_details_id_seq", Long.class);
+                    diag.put("sequenceValueGuess", seqVal);
+                } catch (Exception e) {
+                    diag.put("sequenceValueGuess", "Error: " + e.getMessage());
+                }
+            }
+
+            // 3. Max ID
+            Long maxId = jdbcTemplate.queryForObject("SELECT MAX(id) FROM gstr7_filing_details", Long.class);
+            diag.put("maxId", maxId);
+
+            // 4. Rows for GSTIN
+            List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                "SELECT id, return_period FROM gstr7_filing_details WHERE gstin = ? ORDER BY return_period DESC", gstin);
+            diag.put("rows", rows);
+
+            return ResponseEntity.ok(diag);
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(java.util.Map.of("error", e.getMessage()));
+        }
     }
 
     /**
