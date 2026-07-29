@@ -7,8 +7,10 @@ import com.company.grc.repository.Gstr7FilingDetailRepository;
 import com.company.grc.repository.Gstr7ReviewRepository;
 import com.company.grc.entity.Gstr7ReviewEntity;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.annotation.PostConstruct;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,7 +34,18 @@ public class Gstr7FilingService {
     private final com.company.grc.repository.PanHsnConfigRepository panHsnConfigRepository;
     private final Gstr7ReviewRepository reviewRepository;
     private final EntityManager entityManager;
+    private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @PostConstruct
+    public void fixSequences() {
+        try {
+            jdbcTemplate.execute("SELECT setval('gstr7_filing_details_id_seq', COALESCE((SELECT MAX(id) FROM gstr7_filing_details), 1))");
+            System.out.println("Successfully synchronized gstr7_filing_details_id_seq with table MAX(id)");
+        } catch (Exception e) {
+            System.err.println("Failed to sync sequence: " + e.getMessage());
+        }
+    }
 
     public record FilingPreviewItem(
             String returnPeriod,
