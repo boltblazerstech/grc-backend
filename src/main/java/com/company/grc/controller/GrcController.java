@@ -160,8 +160,11 @@ public class GrcController {
     @GetMapping("/admin/diag/gstr7/{gstin}")
     public ResponseEntity<?> diagnosticGstr7(@PathVariable String gstin) {
         List<Map<String, Object>> results = jdbcTemplate.queryForList(
-            "SELECT id, gstin, return_period FROM gstr7_filing_details WHERE gstin = ?", 
-            gstin
+            "SELECT tc.constraint_name, tc.constraint_type, kcu.column_name " +
+            "FROM information_schema.table_constraints tc " +
+            "JOIN information_schema.key_column_usage kcu " +
+            "ON tc.constraint_name = kcu.constraint_name " +
+            "WHERE tc.table_name = 'gstr7_filing_details'"
         );
         return ResponseEntity.ok(results);
     }

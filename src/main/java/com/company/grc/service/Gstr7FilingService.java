@@ -40,8 +40,16 @@ public class Gstr7FilingService {
     @PostConstruct
     public void fixSequences() {
         try {
-            jdbcTemplate.execute("SELECT setval('gstr7_filing_details_id_seq', COALESCE((SELECT MAX(id) FROM gstr7_filing_details), 1))");
-            System.out.println("Successfully synchronized gstr7_filing_details_id_seq with table MAX(id)");
+            // Find the sequence name dynamically for the 'id' column
+            String seqName = jdbcTemplate.queryForObject(
+                "SELECT pg_get_serial_sequence('gstr7_filing_details', 'id')", String.class);
+            
+            if (seqName != null) {
+                jdbcTemplate.execute("SELECT setval('" + seqName + "', COALESCE((SELECT MAX(id) FROM gstr7_filing_details), 1))");
+                System.out.println("Successfully synchronized " + seqName + " with table MAX(id)");
+            } else {
+                System.err.println("Could not find sequence for gstr7_filing_details.id");
+            }
         } catch (Exception e) {
             System.err.println("Failed to sync sequence: " + e.getMessage());
         }
