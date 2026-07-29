@@ -7,6 +7,7 @@ import com.company.grc.repository.Gstr7FilingDetailRepository;
 import com.company.grc.repository.Gstr7ReviewRepository;
 import com.company.grc.entity.Gstr7ReviewEntity;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,6 +31,7 @@ public class Gstr7FilingService {
     private final GstDetailsRepository gstDetailsRepository;
     private final com.company.grc.repository.PanHsnConfigRepository panHsnConfigRepository;
     private final Gstr7ReviewRepository reviewRepository;
+    private final EntityManager entityManager;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public record FilingPreviewItem(
@@ -250,6 +252,12 @@ public class Gstr7FilingService {
                 filingDetailRepository.save(prev);
             }
         }
+
+        // Flush all pending SQL and clear the first-level cache before the aggregate
+        // re-query. Without this, Hibernate detects the already-managed entity IDs
+        // in the new query result and throws "Duplicate identifier in table".
+        entityManager.flush();
+        entityManager.clear();
 
         updateGstDetailsAggregate(gstin);
     }
