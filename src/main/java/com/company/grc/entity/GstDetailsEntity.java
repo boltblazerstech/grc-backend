@@ -19,6 +19,7 @@ import lombok.Builder;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@org.hibernate.annotations.SQLRestriction("is_trashed = false OR is_trashed IS NULL")
 public class GstDetailsEntity {
 
     @Id
@@ -60,6 +61,10 @@ public class GstDetailsEntity {
 
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
+
+    @Column(name = "is_trashed")
+    @Builder.Default
+    private Boolean isTrashed = false;
 
     // ── GSTR7 fields ──────────────────────────────────────────────────────────
 

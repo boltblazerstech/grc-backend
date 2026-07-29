@@ -256,6 +256,23 @@ public class GrcCalculationService {
         return buildResponse(details, false, false);
     }
 
+    @Transactional
+    public void trashGstin(String gstin) {
+        gstDetailsRepository.trashGstinNative(gstin);
+    }
+
+    @Transactional
+    public void restoreGstin(String gstin) {
+        gstDetailsRepository.restoreGstinNative(gstin);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ApiDto.GstAppDetailsResponse> getAllTrashed() {
+        return gstDetailsRepository.findAllTrashedNative().stream()
+                .map(d -> buildResponse(d, false, true))
+                .collect(Collectors.toList());
+    }
+
     @Transactional(readOnly = true)
     public List<ApiDto.GstAppDetailsResponse> getAllDetailsWithScores() {
         List<GstDetailsEntity> allDetails = gstDetailsRepository.findAll();

@@ -147,6 +147,31 @@ public class GrcController {
         return ResponseEntity.ok(vendors);
     }
 
+    @PostMapping("/admin/trash/{gstin}")
+    public ResponseEntity<?> trashGstin(
+            @PathVariable String gstin,
+            @RequestHeader(value = "Role", required = false) String role) {
+        if (!"super_admin".equals(role)) return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Access denied.");
+        grcCalculationService.trashGstin(gstin);
+        return ResponseEntity.ok("Successfully moved GSTIN to trash.");
+    }
+
+    @PostMapping("/admin/trash/{gstin}/restore")
+    public ResponseEntity<?> restoreGstin(
+            @PathVariable String gstin,
+            @RequestHeader(value = "Role", required = false) String role) {
+        if (!"super_admin".equals(role)) return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Access denied.");
+        grcCalculationService.restoreGstin(gstin);
+        return ResponseEntity.ok("Successfully restored GSTIN from trash.");
+    }
+
+    @GetMapping("/admin/trash")
+    public ResponseEntity<?> getTrashedGstins(
+            @RequestHeader(value = "Role", required = false) String role) {
+        if (!"super_admin".equals(role)) return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Access denied.");
+        return ResponseEntity.ok(grcCalculationService.getAllTrashed());
+    }
+
     /**
      * Permanent cleanup of "garbage" records.
      * Deletes records where GSTIN is clearly invalid.
