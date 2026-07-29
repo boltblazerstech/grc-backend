@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
 import jakarta.persistence.EntityManager;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 @RestController
 @RequestMapping("/api/grc")
@@ -22,16 +23,19 @@ public class GrcController {
     private final GrcRuleConfigService ruleConfigService;
     private final GstFetchService gstFetchService;
     private final EntityManager entityManager;
+    private final JdbcTemplate jdbcTemplate;
 
     @Autowired
     public GrcController(GrcCalculationService grcCalculationService,
             GrcRuleConfigService ruleConfigService,
             GstFetchService gstFetchService,
-            EntityManager entityManager) {
+            EntityManager entityManager,
+            JdbcTemplate jdbcTemplate) {
         this.grcCalculationService = grcCalculationService;
         this.ruleConfigService = ruleConfigService;
         this.gstFetchService = gstFetchService;
         this.entityManager = entityManager;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     @GetMapping("/debug-search")
@@ -151,6 +155,15 @@ public class GrcController {
     public ResponseEntity<String> cleanupGarbageRecords() {
         int count = grcCalculationService.cleanupInvalidRecords();
         return ResponseEntity.ok("Successfully removed " + count + " invalid/garbage records.");
+    }
+
+    @GetMapping("/admin/diag/gstr7/{gstin}")
+    public ResponseEntity<?> diagnosticGstr7(@PathVariable String gstin) {
+        List<Map<String, Object>> results = jdbcTemplate.queryForList(
+            "SELECT id, gstin, return_period FROM gstr7_filing_details WHERE gstin = ?", 
+            gstin
+        );
+        return ResponseEntity.ok(results);
     }
 
     /**

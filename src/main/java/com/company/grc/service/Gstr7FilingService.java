@@ -190,6 +190,8 @@ public class Gstr7FilingService {
                 .collect(Collectors.toList());
         if (!toDelete.isEmpty()) {
             filingDetailRepository.deleteAll(toDelete);
+            entityManager.flush();
+            entityManager.clear();
         }
 
         // Filter by relevant periods AND de-duplicate by returnPeriod for Gemini records
