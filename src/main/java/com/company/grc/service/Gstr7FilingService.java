@@ -239,10 +239,10 @@ public class Gstr7FilingService {
                         entity.setDateOfFiling(filed);
                         long days = java.time.temporal.ChronoUnit.DAYS.between(dueDate, filed);
                         if (days <= 0) {
-                            entity.setStatus("Regular");
+                            entity.setStatus("Regular without delay");
                             entity.setDelayDays(0);
                         } else {
-                            entity.setStatus("Delayed");
+                            entity.setStatus("Regular with Delay");
                             entity.setDelayDays((int) days);
                         }
                     } catch (Exception e) {
