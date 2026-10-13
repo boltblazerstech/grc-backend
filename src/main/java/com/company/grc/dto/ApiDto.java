@@ -26,6 +26,7 @@ public class ApiDto {
         private Integer grcScore;
         private LocalDateTime calculatedAt;
         private String gstr7FilingStatus;
+        private String reportUrl;
     }
 
     @Data

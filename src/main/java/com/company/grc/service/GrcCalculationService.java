@@ -102,6 +102,7 @@ public class GrcCalculationService {
                     .grcScore(existingScore.getScore())
                     .calculatedAt(existingScore.getCalculatedAt())
                     .gstr7FilingStatus(gstr7Status)
+                    .reportUrl(buildReportUrl(trimmedGstin))
                     .build();
         }
 
@@ -121,6 +122,7 @@ public class GrcCalculationService {
                     .grcScore(config.DUMMY_DEFAULT_SCORE)
                     .calculatedAt(errorScore.getCalculatedAt())
                     .gstr7FilingStatus(buildGstr7FilingStatus(details.getGstr7Status(), details.getGstr7DelayCount(), details.getGstr7MissedCount()))
+                    .reportUrl(buildReportUrl(trimmedGstin))
                     .build();
         }
 
@@ -134,6 +136,7 @@ public class GrcCalculationService {
                 .grcScore(scoreEntity.getScore())
                 .calculatedAt(scoreEntity.getCalculatedAt())
                 .gstr7FilingStatus(buildGstr7FilingStatus(freshDetails.getGstr7Status(), freshDetails.getGstr7DelayCount(), freshDetails.getGstr7MissedCount()))
+                .reportUrl(buildReportUrl(trimmedGstin))
                 .build();
     }
 
@@ -153,6 +156,7 @@ public class GrcCalculationService {
                 .gstr7FilingStatus(details != null
                         ? buildGstr7FilingStatus(details.getGstr7Status(), details.getGstr7DelayCount(), details.getGstr7MissedCount())
                         : "NA")
+                .reportUrl(buildReportUrl(gstin))
                 .build();
     }
 
