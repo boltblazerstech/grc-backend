@@ -43,6 +43,18 @@ public class GrcCalculationService {
     private final Gstr7FilingDetailRepository gstr7FilingDetailRepository;
     private final Gstr7ReviewRepository gstr7ReviewRepository;
 
+    @org.springframework.beans.factory.annotation.Value("${app.frontend.url:https://grc.scrapli.in}")
+    private String frontendBaseUrl;
+
+    public String buildReportUrl(String gstin) {
+        if (gstin == null || gstin.isBlank()) return null;
+        String base = (frontendBaseUrl != null && !frontendBaseUrl.isBlank()) ? frontendBaseUrl.trim() : "https://grc.scrapli.in";
+        if (base.endsWith("/")) {
+            base = base.substring(0, base.length() - 1);
+        }
+        return base + "/vendor-report/" + gstin.trim().toUpperCase();
+    }
+
     @Autowired
     public GrcCalculationService(GstFetchService gstFetchService,
             GrcRuleEngine ruleEngine,
@@ -193,7 +205,8 @@ public class GrcCalculationService {
                 .gstr7MissedCount(details.getGstr7MissedCount())
                 .gstr7LastUpdated(details.getGstr7LastUpdated())
                 .aadhaarValidation(details.getAadhaarValidation())
-                .coreActivity(details.getCoreActivity());
+                .coreActivity(details.getCoreActivity())
+                .reportUrl(buildReportUrl(gstin));
 
         gstr7FilingDetailRepository.findByGstinOrderByReturnPeriodDesc(gstin).stream().findFirst()
                 .ifPresent(f -> builder.gstr7LastReturnPeriod(f.getReturnPeriod()));
@@ -335,7 +348,8 @@ public class GrcCalculationService {
                                     .gstr7LastUpdated(details.getGstr7LastUpdated())
                                     .aadhaarValidation(details.getAadhaarValidation())
                                     .coreActivity(details.getCoreActivity())
-                                    .gstr7LastReturnPeriod(lastReturnPeriodMap.get(details.getGstin()));
+                                    .gstr7LastReturnPeriod(lastReturnPeriodMap.get(details.getGstin()))
+                                    .reportUrl(buildReportUrl(details.getGstin()));
 
                     String pan = details.getPanNumber();
                     if (pan != null) pan = pan.trim().toUpperCase();
