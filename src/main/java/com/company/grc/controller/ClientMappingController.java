@@ -44,6 +44,15 @@ public class ClientMappingController {
     }
 
     /**
+     * Bulk import clients and their mapped vendors from an uploaded sheet payload.
+     */
+    @PostMapping("/bulk-import")
+    public ResponseEntity<ClientDto.BulkImportResultDto> bulkImportClients(
+            @RequestBody ClientDto.BulkImportRequestDto request) {
+        return ResponseEntity.ok(clientService.bulkImportFromSheet(request));
+    }
+
+    /**
      * Get a specific client by ID.
      */
     @GetMapping("/{id}")

@@ -32,4 +32,7 @@ public interface GstDetailsRepository extends JpaRepository<GstDetailsEntity, St
     @Modifying
     @Query(value = "UPDATE gst_details SET is_trashed = false WHERE gstin = :gstin", nativeQuery = true)
     void restoreGstinNative(@Param("gstin") String gstin);
+
+    @Query("SELECT g FROM GstDetailsEntity g WHERE LOWER(g.tradeName) LIKE LOWER(CONCAT('%', :query, '%')) OR LOWER(g.legalName) LIKE LOWER(CONCAT('%', :query, '%'))")
+    List<GstDetailsEntity> searchByName(@Param("query") String query);
 }

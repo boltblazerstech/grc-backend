@@ -11,6 +11,10 @@ public interface ClientRepository extends JpaRepository<ClientEntity, Long> {
 
     Optional<ClientEntity> findByClientGstin(String clientGstin);
 
+    Optional<ClientEntity> findByClientNameIgnoreCase(String clientName);
+
+    Optional<ClientEntity> findFirstByClientNameIgnoreCaseContaining(String clientName);
+
     boolean existsByClientGstin(String clientGstin);
 
     boolean existsByClientGstinAndIdNot(String clientGstin, Long id);
