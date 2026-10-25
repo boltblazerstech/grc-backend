@@ -5,6 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -51,10 +52,26 @@ public class ClientDto {
         private String vendorGstin;
         private String tradeName;
         private String legalName;
+        private String gstType;
+        private LocalDate registrationDate;
+        private Double ageYears;
         private String gstStatus;
+        private Integer delayCountGstr1;
+        private Integer delayCountGstr3b;
         private Integer grcScore;
         private LocalDateTime mappedAt;
         private String reportUrl;
+
+        // Compliance details matching standard template
+        private String gstdNo;
+        private String gstr7Status;
+        private Integer gstr7DelayCount;
+        private Integer gstr7MissedCount;
+        private Boolean tdsApplicable;
+        private String aadhaarValidation;
+        private String coreActivity;
+        private String aggregateTurnover;
+        private String panNumber;
     }
 
     @Data

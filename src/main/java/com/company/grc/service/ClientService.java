@@ -9,6 +9,7 @@ import com.company.grc.repository.ClientRepository;
 import com.company.grc.repository.ClientVendorMappingRepository;
 import com.company.grc.repository.GrcScoreRepository;
 import com.company.grc.repository.GstDetailsRepository;
+import com.company.grc.repository.PanHsnConfigRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -16,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.regex.Pattern;
@@ -37,6 +39,7 @@ public class ClientService {
     private final ClientVendorMappingRepository mappingRepository;
     private final GstDetailsRepository gstDetailsRepository;
     private final GrcScoreRepository grcScoreRepository;
+    private final PanHsnConfigRepository panHsnConfigRepository;
     private final String frontendUrl;
 
     @Autowired
@@ -44,11 +47,13 @@ public class ClientService {
                          ClientVendorMappingRepository mappingRepository,
                          GstDetailsRepository gstDetailsRepository,
                          GrcScoreRepository grcScoreRepository,
+                         PanHsnConfigRepository panHsnConfigRepository,
                          @Value("${app.frontend.url:https://grc.scrapli.in}") String frontendUrl) {
         this.clientRepository = clientRepository;
         this.mappingRepository = mappingRepository;
         this.gstDetailsRepository = gstDetailsRepository;
         this.grcScoreRepository = grcScoreRepository;
+        this.panHsnConfigRepository = panHsnConfigRepository;
         this.frontendUrl = frontendUrl.replaceAll("/+$", "");
     }
 
@@ -176,8 +181,34 @@ public class ClientService {
 
             String tradeName = gstOpt.map(GstDetailsEntity::getTradeName).orElse(null);
             String legalName = gstOpt.map(GstDetailsEntity::getLegalName).orElse(null);
+            String gstType = gstOpt.map(GstDetailsEntity::getGstType).orElse(null);
+            LocalDate regDate = gstOpt.map(GstDetailsEntity::getRegistrationDate).orElse(null);
+            Double ageYears = null;
+            if (regDate != null) {
+                long days = java.time.temporal.ChronoUnit.DAYS.between(regDate, LocalDate.now());
+                ageYears = Math.round((days / 365.25) * 10.0) / 10.0;
+            }
+
             String gstStatus = gstOpt.map(GstDetailsEntity::getGstStatus).orElse("Unknown");
+            Integer delayCountGstr1 = gstOpt.map(GstDetailsEntity::getDelayCountGstr1).orElse(0);
+            Integer delayCountGstr3b = gstOpt.map(GstDetailsEntity::getDelayCountGstr3b).orElse(0);
             Integer grcScore = scoreOpt.map(GrcScoreEntity::getScore).orElse(null);
+
+            String gstdNo = gstOpt.map(GstDetailsEntity::getGstdNo).orElse(null);
+            String gstr7Status = gstOpt.map(GstDetailsEntity::getGstr7Status).orElse(null);
+            Integer gstr7DelayCount = gstOpt.map(GstDetailsEntity::getGstr7DelayCount).orElse(0);
+            Integer gstr7MissedCount = gstOpt.map(GstDetailsEntity::getGstr7MissedCount).orElse(0);
+            String aadhaarValidation = gstOpt.map(GstDetailsEntity::getAadhaarValidation).orElse(null);
+            String coreActivity = gstOpt.map(GstDetailsEntity::getCoreActivity).orElse(null);
+            String aggregateTurnover = gstOpt.map(GstDetailsEntity::getAggregateTurnover).orElse(null);
+            String panNumber = gstOpt.map(GstDetailsEntity::getPanNumber).orElse(null);
+
+            Boolean tdsApplicable = null;
+            if (panNumber != null && !panNumber.isBlank()) {
+                tdsApplicable = panHsnConfigRepository.findById(panNumber)
+                        .map(com.company.grc.entity.PanHsnConfigEntity::getIsApplicable)
+                        .orElse(null);
+            }
 
             String reportUrl = frontendUrl + "/vendor-report/" + vendorGstin;
 
@@ -185,10 +216,24 @@ public class ClientService {
                     .vendorGstin(vendorGstin)
                     .tradeName(tradeName)
                     .legalName(legalName)
+                    .gstType(gstType)
+                    .registrationDate(regDate)
+                    .ageYears(ageYears)
                     .gstStatus(gstStatus)
+                    .delayCountGstr1(delayCountGstr1)
+                    .delayCountGstr3b(delayCountGstr3b)
                     .grcScore(grcScore)
                     .mappedAt(mapping.getMappedAt())
                     .reportUrl(reportUrl)
+                    .gstdNo(gstdNo)
+                    .gstr7Status(gstr7Status)
+                    .gstr7DelayCount(gstr7DelayCount)
+                    .gstr7MissedCount(gstr7MissedCount)
+                    .tdsApplicable(tdsApplicable)
+                    .aadhaarValidation(aadhaarValidation)
+                    .coreActivity(coreActivity)
+                    .aggregateTurnover(aggregateTurnover)
+                    .panNumber(panNumber)
                     .build());
         }
 
