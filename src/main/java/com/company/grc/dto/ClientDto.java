@@ -7,6 +7,7 @@ import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 public class ClientDto {
 
@@ -54,5 +55,36 @@ public class ClientDto {
         private Integer grcScore;
         private LocalDateTime mappedAt;
         private String reportUrl;
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class BulkImportClientItem {
+        private String clientName;
+        private String clientGstin;
+        private List<String> vendorGstins;
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class BulkImportRequestDto {
+        private List<BulkImportClientItem> clients;
+        @Builder.Default
+        private Boolean replaceExisting = true;
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class BulkImportResultDto {
+        private int clientsCreated;
+        private int clientsUpdated;
+        private int vendorsMapped;
+        private List<Map<String, Object>> details;
     }
 }

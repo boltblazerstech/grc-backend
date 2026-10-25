@@ -224,7 +224,7 @@ public class ClientService {
                     // Was mapped to another client: reassign exclusively to this client
                     existing.setClient(client);
                     existing.setMappedAt(LocalDateTime.now());
-                    mappingRepository.save(existing);
+                    mappingRepository.saveAndFlush(existing);
                     newlyMapped.add(gstin);
                 }
             } else {
@@ -232,7 +232,7 @@ public class ClientService {
                         .client(client)
                         .vendorGstin(gstin)
                         .build();
-                mappingRepository.save(mapping);
+                mappingRepository.saveAndFlush(mapping);
                 newlyMapped.add(gstin);
             }
         }
@@ -265,6 +265,133 @@ public class ClientService {
             }
         }
         return result;
+    }
+
+    /**
+     * Bulk import clients and map their vendors from an uploaded sheet payload.
+     * When replaceExisting is true (default), all existing clients and vendor mappings
+     * are completely wiped and replaced with the new data from the sheet.
+     */
+    @Transactional
+    public ClientDto.BulkImportResultDto bulkImportFromSheet(ClientDto.BulkImportRequestDto request) {
+        if (request == null || request.getClients() == null || request.getClients().isEmpty()) {
+            throw new IllegalArgumentException("Import data cannot be empty.");
+        }
+
+        boolean replaceExisting = request.getReplaceExisting() == null || Boolean.TRUE.equals(request.getReplaceExisting());
+        if (replaceExisting) {
+            mappingRepository.deleteAllInBatch();
+            clientRepository.deleteAllInBatch();
+            mappingRepository.flush();
+            clientRepository.flush();
+        }
+
+        int createdCount = 0;
+        int updatedCount = 0;
+        int totalVendorsMapped = 0;
+        List<Map<String, Object>> detailsList = new ArrayList<>();
+
+        Map<String, ClientEntity> memoryByName = new HashMap<>();
+        Map<String, ClientEntity> memoryByGstin = new HashMap<>();
+
+        for (ClientDto.BulkImportClientItem item : request.getClients()) {
+            String clientName = item.getClientName() != null ? item.getClientName().trim() : "";
+            if (clientName.isBlank()) continue;
+
+            String clientGstin = item.getClientGstin() != null ? item.getClientGstin().trim().toUpperCase() : "";
+
+            // 1. Resolve or create client
+            ClientEntity client = null;
+            boolean isNew = false;
+
+            // Check in-memory first (for duplicate rows in the sheet)
+            if (!clientGstin.isBlank() && memoryByGstin.containsKey(clientGstin)) {
+                client = memoryByGstin.get(clientGstin);
+            } else if (memoryByName.containsKey(clientName.toLowerCase())) {
+                client = memoryByName.get(clientName.toLowerCase());
+            }
+
+            // If not found in memory and not replacing, check DB
+            if (client == null && !replaceExisting) {
+                if (!clientGstin.isBlank()) {
+                    Optional<ClientEntity> existingByGstin = clientRepository.findByClientGstin(clientGstin);
+                    if (existingByGstin.isPresent()) {
+                        client = existingByGstin.get();
+                    }
+                }
+                if (client == null) {
+                    Optional<ClientEntity> existingByName = clientRepository.findByClientNameIgnoreCase(clientName);
+                    if (existingByName.isPresent()) {
+                        client = existingByName.get();
+                    }
+                }
+            }
+
+            // If still not found, search gst_details for matching GSTIN
+            if (client == null) {
+                if (clientGstin.isBlank()) {
+                    List<GstDetailsEntity> matches = gstDetailsRepository.searchByName(clientName);
+                    if (!matches.isEmpty()) {
+                        clientGstin = matches.get(0).getGstin();
+                        if (!replaceExisting) {
+                            Optional<ClientEntity> used = clientRepository.findByClientGstin(clientGstin);
+                            if (used.isPresent()) {
+                                client = used.get();
+                            }
+                        }
+                    }
+                }
+
+                // If still no client entity, create new
+                if (client == null) {
+                    if (clientGstin.isBlank() || clientGstin.length() != 15) {
+                        String clean = clientName.replaceAll("[^A-Za-z0-9]", "").toUpperCase();
+                        if (clean.length() > 7) clean = clean.substring(0, 7);
+                        String suffix = UUID.randomUUID().toString().replaceAll("-", "").substring(0, 6).toUpperCase();
+                        clientGstin = ("99" + clean + suffix);
+                        if (clientGstin.length() > 15) clientGstin = clientGstin.substring(0, 15);
+                        while (clientGstin.length() < 15) clientGstin = clientGstin + "X";
+                    }
+
+                    client = ClientEntity.builder()
+                            .clientName(clientName)
+                            .clientGstin(clientGstin)
+                            .build();
+                    client = clientRepository.saveAndFlush(client);
+                    createdCount++;
+                    isNew = true;
+                }
+            }
+
+            if (!isNew) {
+                updatedCount++;
+            }
+
+            memoryByName.put(clientName.toLowerCase(), client);
+            if (client.getClientGstin() != null) {
+                memoryByGstin.put(client.getClientGstin(), client);
+            }
+
+            // 2. Map vendors for this client (strict 1-to-many)
+            List<String> vendorGstins = item.getVendorGstins() != null ? item.getVendorGstins() : List.of();
+            List<String> mappedGstins = mapVendors(client.getId(), vendorGstins);
+            totalVendorsMapped += mappedGstins.size();
+
+            Map<String, Object> detail = new HashMap<>();
+            detail.put("clientId", client.getId());
+            detail.put("clientName", client.getClientName());
+            detail.put("clientGstin", client.getClientGstin());
+            detail.put("mappedCount", mappedGstins.size());
+            detail.put("totalRequested", vendorGstins.size());
+            detailsList.add(detail);
+        }
+
+        return ClientDto.BulkImportResultDto.builder()
+                .clientsCreated(createdCount)
+                .clientsUpdated(updatedCount)
+                .vendorsMapped(totalVendorsMapped)
+                .details(detailsList)
+                .build();
     }
 
     private ClientDto.ClientResponseDto mapToResponseDto(ClientEntity entity) {
