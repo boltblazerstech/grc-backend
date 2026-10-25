@@ -10,7 +10,7 @@ import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "client_vendor_mappings", uniqueConstraints = {
-    @UniqueConstraint(name = "uq_client_vendor", columnNames = {"client_id", "vendor_gstin"})
+    @UniqueConstraint(name = "uq_vendor_gstin", columnNames = {"vendor_gstin"})
 })
 @Data
 @NoArgsConstructor
@@ -26,7 +26,7 @@ public class ClientVendorMappingEntity {
     @JoinColumn(name = "client_id", nullable = false)
     private ClientEntity client;
 
-    @Column(name = "vendor_gstin", nullable = false, length = 15)
+    @Column(name = "vendor_gstin", nullable = false, unique = true, length = 15)
     private String vendorGstin;
 
     @Column(name = "mapped_at")

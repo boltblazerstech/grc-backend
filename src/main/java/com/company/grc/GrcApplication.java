@@ -59,10 +59,20 @@ public class GrcApplication {
                         "client_id BIGINT NOT NULL REFERENCES clients(id) ON DELETE CASCADE, " +
                         "vendor_gstin VARCHAR(15) NOT NULL, " +
                         "mapped_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, " +
-                        "CONSTRAINT uq_client_vendor UNIQUE (client_id, vendor_gstin));");
+                        "CONSTRAINT uq_vendor_gstin UNIQUE (vendor_gstin));");
 
                 jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_cvm_client_id ON client_vendor_mappings(client_id);");
                 jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_cvm_vendor_gstin ON client_vendor_mappings(vendor_gstin);");
+
+                // Ensure strict 1-to-many: one vendor mapped with one client only
+                try {
+                    jdbcTemplate.execute("ALTER TABLE client_vendor_mappings DROP CONSTRAINT IF EXISTS uq_client_vendor;");
+                    jdbcTemplate.execute("DELETE FROM client_vendor_mappings a USING client_vendor_mappings b WHERE a.id < b.id AND a.vendor_gstin = b.vendor_gstin;");
+                    jdbcTemplate.execute("ALTER TABLE client_vendor_mappings DROP CONSTRAINT IF EXISTS uq_vendor_gstin;");
+                    jdbcTemplate.execute("ALTER TABLE client_vendor_mappings ADD CONSTRAINT uq_vendor_gstin UNIQUE (vendor_gstin);");
+                } catch (Exception ex) {
+                    System.err.println("[GrcApplication] uq_vendor_gstin migration notice: " + ex.getMessage());
+                }
 
                 System.out.println("[GrcApplication] Database schema verification successful.");
             } catch (Exception e) {

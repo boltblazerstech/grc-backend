@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -195,6 +196,11 @@ public class ClientService {
         return result;
     }
 
+    /**
+     * Map vendors to a client (strict 1-to-many: one vendor mapped with one client only).
+     * If a vendor is already mapped to this client, it is kept.
+     * If a vendor was previously mapped to another client, it is moved to this client.
+     */
     @Transactional
     public List<String> mapVendors(Long clientId, List<String> vendorGstins) {
         ClientEntity client = getClientEntityById(clientId);
@@ -208,7 +214,20 @@ public class ClientService {
             if (rawGstin == null || rawGstin.trim().isBlank()) continue;
             String gstin = rawGstin.trim().toUpperCase();
 
-            if (!mappingRepository.existsByClientIdAndVendorGstin(clientId, gstin)) {
+            Optional<ClientVendorMappingEntity> existingOpt = mappingRepository.findByVendorGstin(gstin);
+            if (existingOpt.isPresent()) {
+                ClientVendorMappingEntity existing = existingOpt.get();
+                if (existing.getClient().getId().equals(clientId)) {
+                    // Already mapped to this client
+                    continue;
+                } else {
+                    // Was mapped to another client: reassign exclusively to this client
+                    existing.setClient(client);
+                    existing.setMappedAt(LocalDateTime.now());
+                    mappingRepository.save(existing);
+                    newlyMapped.add(gstin);
+                }
+            } else {
                 ClientVendorMappingEntity mapping = ClientVendorMappingEntity.builder()
                         .client(client)
                         .vendorGstin(gstin)
@@ -227,6 +246,25 @@ public class ClientService {
         if (vendorGstin != null && !vendorGstin.trim().isBlank()) {
             mappingRepository.deleteByClientIdAndVendorGstin(clientId, vendorGstin.trim().toUpperCase());
         }
+    }
+
+    /**
+     * Returns a dictionary of all assigned vendors across all clients:
+     * { "VENDOR_GSTIN": { "clientId": 1, "clientName": "Tata", "clientGstin": "..." } }
+     */
+    public Map<String, Map<String, Object>> getAllAssignedVendors() {
+        List<ClientVendorMappingEntity> all = mappingRepository.findAll();
+        Map<String, Map<String, Object>> result = new HashMap<>();
+        for (ClientVendorMappingEntity m : all) {
+            if (m.getClient() != null) {
+                Map<String, Object> info = new HashMap<>();
+                info.put("clientId", m.getClient().getId());
+                info.put("clientName", m.getClient().getClientName());
+                info.put("clientGstin", m.getClient().getClientGstin());
+                result.put(m.getVendorGstin(), info);
+            }
+        }
+        return result;
     }
 
     private ClientDto.ClientResponseDto mapToResponseDto(ClientEntity entity) {

@@ -8,11 +8,20 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface ClientVendorMappingRepository extends JpaRepository<ClientVendorMappingEntity, Long> {
 
     List<ClientVendorMappingEntity> findByClientId(Long clientId);
+
+    Optional<ClientVendorMappingEntity> findByVendorGstin(String vendorGstin);
+
+    boolean existsByVendorGstin(String vendorGstin);
+
+    @Modifying
+    @Query("DELETE FROM ClientVendorMappingEntity m WHERE m.vendorGstin = :vendorGstin")
+    void deleteByVendorGstin(@Param("vendorGstin") String vendorGstin);
 
     @Modifying
     @Query("DELETE FROM ClientVendorMappingEntity m WHERE m.client.id = :clientId AND m.vendorGstin = :vendorGstin")

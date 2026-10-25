@@ -35,6 +35,15 @@ public class ClientMappingController {
     }
 
     /**
+     * Returns a dictionary of all assigned vendors across all clients:
+     * { "VENDOR_GSTIN": { "clientId": 1, "clientName": "Tata", "clientGstin": "..." } }
+     */
+    @GetMapping("/assigned-vendors")
+    public ResponseEntity<Map<String, Map<String, Object>>> getAssignedVendors() {
+        return ResponseEntity.ok(clientService.getAllAssignedVendors());
+    }
+
+    /**
      * Get a specific client by ID.
      */
     @GetMapping("/{id}")
