@@ -404,8 +404,20 @@ public class GrcCalculationService {
         if (request.getAggregateTurnover() != null) details.setAggregateTurnover(request.getAggregateTurnover());
         if (request.getDelayCountGstr1() != null) details.setDelayCountGstr1(request.getDelayCountGstr1());
         if (request.getDelayCountGstr3b() != null) details.setDelayCountGstr3b(request.getDelayCountGstr3b());
-        if (request.getDelayedMonthsGstr1() != null) details.setDelayedMonthsGstr1(request.getDelayedMonthsGstr1().trim().isEmpty() ? null : request.getDelayedMonthsGstr1().trim());
-        if (request.getDelayedMonthsGstr3b() != null) details.setDelayedMonthsGstr3b(request.getDelayedMonthsGstr3b().trim().isEmpty() ? null : request.getDelayedMonthsGstr3b().trim());
+
+        if (request.getDelayedMonthsGstr1() != null) {
+            String m1 = request.getDelayedMonthsGstr1().trim();
+            details.setDelayedMonthsGstr1(m1.isEmpty() ? null : m1);
+        } else if (request.getDelayCountGstr1() != null && request.getDelayCountGstr1() == 0) {
+            details.setDelayedMonthsGstr1(null);
+        }
+
+        if (request.getDelayedMonthsGstr3b() != null) {
+            String m3b = request.getDelayedMonthsGstr3b().trim();
+            details.setDelayedMonthsGstr3b(m3b.isEmpty() ? null : m3b);
+        } else if (request.getDelayCountGstr3b() != null && request.getDelayCountGstr3b() == 0) {
+            details.setDelayedMonthsGstr3b(null);
+        }
         if (request.getMobile() != null) details.setMobile(request.getMobile());
         if (request.getEmail() != null) details.setEmail(request.getEmail());
         if (request.getPanNumber() != null) details.setPanNumber(request.getPanNumber());
