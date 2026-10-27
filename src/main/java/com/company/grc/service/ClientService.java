@@ -179,8 +179,15 @@ public class ClientService {
             Optional<GstDetailsEntity> gstOpt = gstDetailsRepository.findById(vendorGstin);
             Optional<GrcScoreEntity> scoreOpt = grcScoreRepository.findById(vendorGstin);
 
-            String tradeName = gstOpt.map(GstDetailsEntity::getTradeName).orElse(null);
-            String legalName = gstOpt.map(GstDetailsEntity::getLegalName).orElse(null);
+            String rawTrade = gstOpt.map(GstDetailsEntity::getTradeName).orElse(null);
+            String rawLegal = gstOpt.map(GstDetailsEntity::getLegalName).orElse(null);
+            String cleanTrade = isInvalidName(rawTrade) ? null : rawTrade.trim();
+            String cleanLegal = isInvalidName(rawLegal) ? null : rawLegal.trim();
+
+            // If tradeName is null/NA, fallback to legalName; if legalName is null/NA, fallback to tradeName
+            String tradeName = cleanTrade != null ? cleanTrade : cleanLegal;
+            String legalName = cleanLegal != null ? cleanLegal : cleanTrade;
+
             String gstType = gstOpt.map(GstDetailsEntity::getGstType).orElse(null);
             LocalDate regDate = gstOpt.map(GstDetailsEntity::getRegistrationDate).orElse(null);
             Double ageYears = null;
@@ -499,6 +506,18 @@ public class ClientService {
             if (lower.endsWith(".svg")) return "image/svg+xml";
         }
         return "image/png";
+    }
+
+    private boolean isInvalidName(String s) {
+        if (s == null) return true;
+        String t = s.trim();
+        return t.isEmpty() ||
+                t.equalsIgnoreCase("NA") ||
+                t.equalsIgnoreCase("N/A") ||
+                t.equalsIgnoreCase("null") ||
+                t.equalsIgnoreCase("none") ||
+                t.equalsIgnoreCase("-") ||
+                t.equalsIgnoreCase("undefined");
     }
 
     public static class LogoData {
