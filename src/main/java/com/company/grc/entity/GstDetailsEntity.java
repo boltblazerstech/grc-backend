@@ -56,6 +56,12 @@ public class GstDetailsEntity {
     @Column(name = "delay_count_gstr3b")
     private Integer delayCountGstr3b;
 
+    @Column(name = "delayed_months_gstr1", length = 500)
+    private String delayedMonthsGstr1;
+
+    @Column(name = "delayed_months_gstr3b", length = 500)
+    private String delayedMonthsGstr3b;
+
     @Column(name = "source", length = 50)
     private String source;
 

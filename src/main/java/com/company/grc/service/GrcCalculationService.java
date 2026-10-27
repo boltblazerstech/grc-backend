@@ -197,6 +197,8 @@ public class GrcCalculationService {
                 .aggregateTurnover(details.getAggregateTurnover())
                 .delayCountGstr1(details.getDelayCountGstr1())
                 .delayCountGstr3b(details.getDelayCountGstr3b())
+                .delayedMonthsGstr1(details.getDelayedMonthsGstr1())
+                .delayedMonthsGstr3b(details.getDelayedMonthsGstr3b())
                 .source(details.getSource())
                 .apiError(details.getApiError())
                 .dataSource(details.getDataSource())
@@ -402,6 +404,8 @@ public class GrcCalculationService {
         if (request.getAggregateTurnover() != null) details.setAggregateTurnover(request.getAggregateTurnover());
         if (request.getDelayCountGstr1() != null) details.setDelayCountGstr1(request.getDelayCountGstr1());
         if (request.getDelayCountGstr3b() != null) details.setDelayCountGstr3b(request.getDelayCountGstr3b());
+        if (request.getDelayedMonthsGstr1() != null) details.setDelayedMonthsGstr1(request.getDelayedMonthsGstr1().trim().isEmpty() ? null : request.getDelayedMonthsGstr1().trim());
+        if (request.getDelayedMonthsGstr3b() != null) details.setDelayedMonthsGstr3b(request.getDelayedMonthsGstr3b().trim().isEmpty() ? null : request.getDelayedMonthsGstr3b().trim());
         if (request.getMobile() != null) details.setMobile(request.getMobile());
         if (request.getEmail() != null) details.setEmail(request.getEmail());
         if (request.getPanNumber() != null) details.setPanNumber(request.getPanNumber());

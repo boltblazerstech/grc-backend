@@ -45,6 +45,8 @@ public class ApiDto {
         private String aggregateTurnover;
         private Integer delayCountGstr1;
         private Integer delayCountGstr3b;
+        private String delayedMonthsGstr1;
+        private String delayedMonthsGstr3b;
 
         private Integer grcScore;
         private LocalDateTime scoreCalculatedAt;
@@ -112,6 +114,8 @@ public class ApiDto {
         private String aggregateTurnover;
         private Integer delayCountGstr1;
         private Integer delayCountGstr3b;
+        private String delayedMonthsGstr1;
+        private String delayedMonthsGstr3b;
         private String updatedBy;
         // Admin-editable fields
         private String mobile;

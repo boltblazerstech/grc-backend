@@ -58,6 +58,8 @@ public class ClientDto {
         private String gstStatus;
         private Integer delayCountGstr1;
         private Integer delayCountGstr3b;
+        private String delayedMonthsGstr1;
+        private String delayedMonthsGstr3b;
         private Integer grcScore;
         private LocalDateTime mappedAt;
         private String reportUrl;
