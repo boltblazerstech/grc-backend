@@ -18,4 +18,7 @@ public interface ClientRepository extends JpaRepository<ClientEntity, Long> {
     boolean existsByClientGstin(String clientGstin);
 
     boolean existsByClientGstinAndIdNot(String clientGstin, Long id);
+
+    @org.springframework.data.jpa.repository.Query("SELECT c FROM ClientEntity c WHERE LOWER(c.clientGstin) LIKE LOWER(CONCAT('%', :query, '%')) OR LOWER(c.clientName) LIKE LOWER(CONCAT('%', :query, '%'))")
+    java.util.List<ClientEntity> searchByGstinOrName(@org.springframework.data.repository.query.Param("query") String query);
 }

@@ -106,4 +106,18 @@ public class ClientDto {
         private int vendorsMapped;
         private List<Map<String, Object>> details;
     }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class CompanySearchResultDto {
+        private String gstin;
+        private String name;
+        private String tradeName;
+        private String legalName;
+        private String address;
+        private String gstType;
+        private String source; // "client" or "vendor" or "gst_details"
+    }
 }

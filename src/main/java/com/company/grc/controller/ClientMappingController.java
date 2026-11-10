@@ -35,6 +35,15 @@ public class ClientMappingController {
     }
 
     /**
+     * Search companies (clients & database records) by name or GSTIN for invoice creation.
+     */
+    @GetMapping("/search-companies")
+    public ResponseEntity<List<ClientDto.CompanySearchResultDto>> searchCompanies(
+            @RequestParam(required = false, defaultValue = "") String query) {
+        return ResponseEntity.ok(clientService.searchCompanies(query));
+    }
+
+    /**
      * Returns a dictionary of all assigned vendors across all clients:
      * { "VENDOR_GSTIN": { "clientId": 1, "clientName": "Tata", "clientGstin": "..." } }
      */

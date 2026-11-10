@@ -35,4 +35,10 @@ public interface GstDetailsRepository extends JpaRepository<GstDetailsEntity, St
 
     @Query("SELECT g FROM GstDetailsEntity g WHERE LOWER(g.tradeName) LIKE LOWER(CONCAT('%', :query, '%')) OR LOWER(g.legalName) LIKE LOWER(CONCAT('%', :query, '%'))")
     List<GstDetailsEntity> searchByName(@Param("query") String query);
+
+    @Query("SELECT g FROM GstDetailsEntity g WHERE (g.isTrashed = false OR g.isTrashed IS NULL) AND (" +
+           "LOWER(g.gstin) LIKE LOWER(CONCAT('%', :query, '%')) OR " +
+           "LOWER(g.tradeName) LIKE LOWER(CONCAT('%', :query, '%')) OR " +
+           "LOWER(g.legalName) LIKE LOWER(CONCAT('%', :query, '%')))")
+    List<GstDetailsEntity> searchByGstinOrName(@Param("query") String query, Pageable pageable);
 }

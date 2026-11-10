@@ -12,6 +12,8 @@ import com.company.grc.repository.GstDetailsRepository;
 import com.company.grc.repository.PanHsnConfigRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -448,6 +450,67 @@ public class ClientService {
                 .vendorsMapped(totalVendorsMapped)
                 .details(detailsList)
                 .build();
+    }
+
+    /**
+     * Search companies by name or GSTIN across clients and database records (for invoice creation).
+     */
+    @Transactional(readOnly = true)
+    public List<ClientDto.CompanySearchResultDto> searchCompanies(String query) {
+        if (query == null || query.trim().length() < 2) {
+            return List.of();
+        }
+        String cleanQuery = query.trim();
+        Map<String, ClientDto.CompanySearchResultDto> resultMap = new LinkedHashMap<>();
+
+        // 1. Search clients
+        List<ClientEntity> matchedClients = clientRepository.searchByGstinOrName(cleanQuery);
+        for (ClientEntity c : matchedClients) {
+            String gstin = c.getClientGstin() != null ? c.getClientGstin().toUpperCase() : "";
+            if (gstin.isBlank()) continue;
+
+            String address = "";
+            String gstType = "";
+            Optional<GstDetailsEntity> gd = gstDetailsRepository.findById(gstin);
+            if (gd.isPresent()) {
+                address = gd.get().getAddress() != null ? gd.get().getAddress() : "";
+                gstType = gd.get().getGstType() != null ? gd.get().getGstType() : "";
+            }
+
+            resultMap.put(gstin, ClientDto.CompanySearchResultDto.builder()
+                    .gstin(gstin)
+                    .name(c.getClientName())
+                    .tradeName(c.getClientName())
+                    .legalName(c.getClientName())
+                    .address(address)
+                    .gstType(gstType)
+                    .source("Client")
+                    .build());
+        }
+
+        // 2. Search gst_details (limit 25)
+        Pageable pageable = PageRequest.of(0, 25);
+        List<GstDetailsEntity> matchedGst = gstDetailsRepository.searchByGstinOrName(cleanQuery, pageable);
+        for (GstDetailsEntity g : matchedGst) {
+            String gstin = g.getGstin() != null ? g.getGstin().toUpperCase() : "";
+            if (gstin.isBlank() || resultMap.containsKey(gstin)) continue;
+
+            String displayName = (g.getTradeName() != null && !g.getTradeName().isBlank())
+                    ? g.getTradeName()
+                    : (g.getLegalName() != null ? g.getLegalName() : gstin);
+
+            resultMap.put(gstin, ClientDto.CompanySearchResultDto.builder()
+                    .gstin(gstin)
+                    .name(displayName)
+                    .tradeName(g.getTradeName())
+                    .legalName(g.getLegalName())
+                    .address(g.getAddress() != null ? g.getAddress() : "")
+                    .gstType(g.getGstType())
+                    .source("Database")
+                    .build());
+        }
+
+        return new ArrayList<>(resultMap.values());
     }
 
     private ClientDto.ClientResponseDto mapToResponseDto(ClientEntity entity) {
