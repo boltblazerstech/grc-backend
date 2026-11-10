@@ -64,7 +64,7 @@ public class ClientMappingController {
     /**
      * Get a specific client by ID.
      */
-    @GetMapping("/{id}")
+    @GetMapping("/{id:[0-9]+}")
     public ResponseEntity<ClientDto.ClientResponseDto> getClientById(@PathVariable Long id) {
         return ResponseEntity.ok(clientService.getClientById(id));
     }
