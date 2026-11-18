@@ -7,9 +7,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.*;
 
 @Service
 @RequiredArgsConstructor
@@ -89,27 +90,92 @@ public class InvoiceService {
     }
 
     /**
-     * Records a generated invoice number in the database list.
+     * Records a generated invoice with full details in the database.
      */
     @Transactional
-    public GeneratedInvoiceEntity recordInvoice(String invoiceNumber, String companyName, Integer month, Integer year) {
+    public GeneratedInvoiceEntity recordInvoice(Map<String, Object> payload) {
+        String invoiceNumber = (String) payload.get("invoiceNumber");
         if (invoiceNumber == null || invoiceNumber.trim().isEmpty()) {
             throw new IllegalArgumentException("Invoice number cannot be empty");
         }
 
         String cleanNumber = invoiceNumber.trim();
+        String companyName = (String) payload.get("companyName");
+        if (companyName == null) companyName = (String) payload.get("customerName");
 
-        return invoiceRepository.findByInvoiceNumber(cleanNumber)
-                .orElseGet(() -> {
-                    GeneratedInvoiceEntity entity = GeneratedInvoiceEntity.builder()
-                            .invoiceNumber(cleanNumber)
-                            .companyName(companyName != null ? companyName.trim() : null)
-                            .billingMonth(month)
-                            .billingYear(year)
-                            .build();
-                    log.info("Recording new generated invoice number: {}", cleanNumber);
-                    return invoiceRepository.save(entity);
-                });
+        Integer month = payload.get("billingMonth") != null ? ((Number) payload.get("billingMonth")).intValue()
+                : (payload.get("month") != null ? ((Number) payload.get("month")).intValue() : null);
+        Integer year = payload.get("billingYear") != null ? ((Number) payload.get("billingYear")).intValue()
+                : (payload.get("year") != null ? ((Number) payload.get("year")).intValue() : null);
+
+        String customerGstin = (String) payload.get("customerGstin");
+        String customerAddress = (String) payload.get("customerAddress");
+        String natureOfSupply = (String) payload.get("natureOfSupply");
+        String sacCode = (String) payload.get("sacCode");
+        String invoiceDate = (String) payload.get("invoiceDate");
+        String billingPeriod = (String) payload.get("billingPeriod");
+        String itemDescription = (String) payload.get("itemDescription");
+        String amountInWords = (String) payload.get("amountInWords");
+        String jsonData = (String) payload.get("jsonData");
+        Boolean isInterState = payload.get("isInterState") != null ? (Boolean) payload.get("isInterState") : null;
+
+        BigDecimal price = payload.get("price") != null ? new BigDecimal(String.valueOf(payload.get("price"))) : null;
+        BigDecimal discountPercent = payload.get("discountPercent") != null ? new BigDecimal(String.valueOf(payload.get("discountPercent"))) : null;
+        BigDecimal finalRate = payload.get("finalRate") != null ? new BigDecimal(String.valueOf(payload.get("finalRate"))) : null;
+        BigDecimal taxAmount = payload.get("taxAmount") != null ? new BigDecimal(String.valueOf(payload.get("taxAmount"))) : null;
+        BigDecimal totalAmount = payload.get("totalAmount") != null ? new BigDecimal(String.valueOf(payload.get("totalAmount"))) : null;
+
+        Optional<GeneratedInvoiceEntity> existing = invoiceRepository.findByInvoiceNumber(cleanNumber);
+        GeneratedInvoiceEntity entity = existing.orElseGet(GeneratedInvoiceEntity::new);
+
+        entity.setInvoiceNumber(cleanNumber);
+        if (companyName != null) entity.setCompanyName(companyName.trim());
+        if (customerGstin != null) entity.setCustomerGstin(customerGstin.trim());
+        if (customerAddress != null) entity.setCustomerAddress(customerAddress.trim());
+        if (natureOfSupply != null) entity.setNatureOfSupply(natureOfSupply);
+        if (sacCode != null) entity.setSacCode(sacCode);
+        if (invoiceDate != null) entity.setInvoiceDate(invoiceDate);
+        if (billingPeriod != null) entity.setBillingPeriod(billingPeriod);
+        if (month != null) entity.setBillingMonth(month);
+        if (year != null) entity.setBillingYear(year);
+        if (itemDescription != null) entity.setItemDescription(itemDescription);
+        if (price != null) entity.setPrice(price);
+        if (discountPercent != null) entity.setDiscountPercent(discountPercent);
+        if (finalRate != null) entity.setFinalRate(finalRate);
+        if (taxAmount != null) entity.setTaxAmount(taxAmount);
+        if (totalAmount != null) entity.setTotalAmount(totalAmount);
+        if (isInterState != null) entity.setIsInterState(isInterState);
+        if (amountInWords != null) entity.setAmountInWords(amountInWords);
+        if (jsonData != null) entity.setJsonData(jsonData);
+
+        log.info("Recording/updating generated invoice details: {}", cleanNumber);
+        return invoiceRepository.save(entity);
+    }
+
+    /**
+     * Retrieves generated invoices for the previous two months and the current month.
+     */
+    @Transactional(readOnly = true)
+    public List<GeneratedInvoiceEntity> getRecentInvoices() {
+        LocalDate today = LocalDate.now();
+
+        // Month 0 (Current Month)
+        int m0 = today.getMonthValue();
+        int y0 = today.getYear();
+
+        // Month 1 (Previous Month)
+        LocalDate prev1 = today.minusMonths(1);
+        int m1 = prev1.getMonthValue();
+        int y1 = prev1.getYear();
+
+        // Month 2 (Two Months Ago)
+        LocalDate prev2 = today.minusMonths(2);
+        int m2 = prev2.getMonthValue();
+        int y2 = prev2.getYear();
+
+        LocalDateTime cutoff = today.minusMonths(3).atStartOfDay();
+
+        return invoiceRepository.findRecentInvoices(m0, y0, m1, y1, m2, y2, cutoff);
     }
 
     @Transactional(readOnly = true)

@@ -33,23 +33,26 @@ public class InvoiceController {
     }
 
     /**
-     * Record an invoice number in the database list upon generation/download.
+     * Record an invoice in the database upon generation/download with full metadata.
      */
     @PostMapping("/record")
     public ResponseEntity<Map<String, Object>> recordInvoice(
             @RequestBody Map<String, Object> payload) {
 
-        String invoiceNumber = (String) payload.get("invoiceNumber");
-        String companyName = (String) payload.get("companyName");
-        Integer month = payload.get("month") != null ? ((Number) payload.get("month")).intValue() : null;
-        Integer year = payload.get("year") != null ? ((Number) payload.get("year")).intValue() : null;
-
-        GeneratedInvoiceEntity saved = invoiceService.recordInvoice(invoiceNumber, companyName, month, year);
+        GeneratedInvoiceEntity saved = invoiceService.recordInvoice(payload);
         return ResponseEntity.ok(Map.of(
                 "success", true,
                 "id", saved.getId(),
                 "invoiceNumber", saved.getInvoiceNumber()
         ));
+    }
+
+    /**
+     * Get generated invoices for the previous two months and the current month.
+     */
+    @GetMapping("/recent")
+    public ResponseEntity<List<GeneratedInvoiceEntity>> getRecentInvoices() {
+        return ResponseEntity.ok(invoiceService.getRecentInvoices());
     }
 
     /**
