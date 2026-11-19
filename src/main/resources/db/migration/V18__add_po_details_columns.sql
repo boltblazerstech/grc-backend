@@ -1,0 +1,3 @@
+ALTER TABLE generated_invoices
+  ADD COLUMN IF NOT EXISTS po_number VARCHAR(100),
+  ADD COLUMN IF NOT EXISTS po_date VARCHAR(100);

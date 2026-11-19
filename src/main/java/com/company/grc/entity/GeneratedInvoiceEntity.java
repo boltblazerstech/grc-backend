@@ -45,6 +45,12 @@ public class GeneratedInvoiceEntity {
     @Column(name = "billing_period", length = 50)
     private String billingPeriod;
 
+    @Column(name = "po_number", length = 100)
+    private String poNumber;
+
+    @Column(name = "po_date", length = 100)
+    private String poDate;
+
     @Column(name = "billing_month")
     private Integer billingMonth;
 

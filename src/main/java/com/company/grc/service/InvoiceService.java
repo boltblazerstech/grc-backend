@@ -114,6 +114,8 @@ public class InvoiceService {
         String sacCode = (String) payload.get("sacCode");
         String invoiceDate = (String) payload.get("invoiceDate");
         String billingPeriod = (String) payload.get("billingPeriod");
+        String poNumber = (String) payload.get("poNumber");
+        String poDate = (String) payload.get("poDate");
         String itemDescription = (String) payload.get("itemDescription");
         String amountInWords = (String) payload.get("amountInWords");
         String jsonData = (String) payload.get("jsonData");
@@ -136,6 +138,8 @@ public class InvoiceService {
         if (sacCode != null) entity.setSacCode(sacCode);
         if (invoiceDate != null) entity.setInvoiceDate(invoiceDate);
         if (billingPeriod != null) entity.setBillingPeriod(billingPeriod);
+        if (poNumber != null) entity.setPoNumber(poNumber.trim());
+        if (poDate != null) entity.setPoDate(poDate.trim());
         if (month != null) entity.setBillingMonth(month);
         if (year != null) entity.setBillingYear(year);
         if (itemDescription != null) entity.setItemDescription(itemDescription);
