@@ -93,7 +93,13 @@ public class ClientDto {
     public static class BulkImportRequestDto {
         private List<BulkImportClientItem> clients;
         @Builder.Default
-        private Boolean replaceExisting = true;
+        private Boolean replaceExisting = false;
+        @Builder.Default
+        private Boolean replaceAll = false;
+        @Builder.Default
+        private Boolean replaceClientVendors = true;
+        private String importMode; // "CLIENT_REPLACE", "CLIENT_APPEND", "GLOBAL_REPLACE"
+        private Long targetClientId;
     }
 
     @Data

@@ -14,6 +14,9 @@ import org.springframework.data.repository.query.Param;
 @Repository
 public interface GstDetailsRepository extends JpaRepository<GstDetailsEntity, String> {
 
+    @Query("SELECT g FROM GstDetailsEntity g WHERE UPPER(TRIM(g.gstin)) = UPPER(TRIM(:gstin))")
+    java.util.Optional<GstDetailsEntity> findByGstinNormalized(@Param("gstin") String gstin);
+
     @Query("SELECT g.gstin FROM GstDetailsEntity g")
     List<String> findAllGstins();
 

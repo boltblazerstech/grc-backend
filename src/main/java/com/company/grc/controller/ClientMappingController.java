@@ -209,6 +209,23 @@ public class ClientMappingController {
     }
 
     /**
+     * Replace all mapped vendors for a specific client with a new list of vendors.
+     * Leaves all other clients and their vendors completely untouched.
+     */
+    @PutMapping("/{id}/vendors")
+    public ResponseEntity<Map<String, Object>> replaceVendors(
+            @PathVariable Long id,
+            @RequestBody ClientDto.VendorMappingRequestDto request) {
+        List<String> gstins = request != null ? request.getVendorGstins() : List.of();
+        List<String> mapped = clientService.replaceClientVendors(id, gstins);
+        return ResponseEntity.ok(Map.of(
+                "message", "Vendors replaced successfully for client.",
+                "vendorsCount", mapped.size(),
+                "mappedGstins", mapped
+        ));
+    }
+
+    /**
      * Remove a vendor mapping from the client.
      */
     @DeleteMapping("/{id}/vendors/{vendorGstin}")

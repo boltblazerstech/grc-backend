@@ -514,6 +514,18 @@ public class ClientService {
     }
 
     /**
+     * Replaces all mapped vendors for a specific client with a new list of vendors.
+     * All other clients and their existing vendor data remain completely safe and untouched.
+     */
+    @Transactional
+    public List<String> replaceClientVendors(Long clientId, List<String> vendorGstins) {
+        getClientEntityById(clientId);
+        mappingRepository.deleteByClientId(clientId);
+        mappingRepository.flush();
+        return mapVendors(clientId, vendorGstins);
+    }
+
+    /**
      * Returns a dictionary of all assigned vendors across all clients:
      * { "VENDOR_GSTIN": { "clientId": 1, "clientName": "Tata", "clientGstin": "..." } }
      */
@@ -543,8 +555,13 @@ public class ClientService {
             throw new IllegalArgumentException("Import data cannot be empty.");
         }
 
-        boolean replaceExisting = request.getReplaceExisting() == null || Boolean.TRUE.equals(request.getReplaceExisting());
-        if (replaceExisting) {
+        boolean isGlobalReplace = Boolean.TRUE.equals(request.getReplaceAll()) 
+                || "GLOBAL_REPLACE".equalsIgnoreCase(request.getImportMode());
+        boolean replaceClientVendors = request.getReplaceClientVendors() == null 
+                || Boolean.TRUE.equals(request.getReplaceClientVendors()) 
+                || "CLIENT_REPLACE".equalsIgnoreCase(request.getImportMode());
+
+        if (isGlobalReplace) {
             // Backup all existing client logos into client_logos table before clearing clients!
             List<ClientEntity> existingClients = clientRepository.findAll();
             for (ClientEntity ec : existingClients) {
@@ -584,8 +601,8 @@ public class ClientService {
                 client = memoryByName.get(clientName.toLowerCase());
             }
 
-            // If not found in memory and not replacing, check DB
-            if (client == null && !replaceExisting) {
+            // If not found in memory and not doing a global replace, check DB
+            if (client == null && !isGlobalReplace) {
                 if (!clientGstin.isBlank()) {
                     Optional<ClientEntity> existingByGstin = clientRepository.findByClientGstin(clientGstin);
                     if (existingByGstin.isPresent()) {
@@ -606,7 +623,7 @@ public class ClientService {
                     List<GstDetailsEntity> matches = gstDetailsRepository.searchByName(clientName);
                     if (!matches.isEmpty()) {
                         clientGstin = matches.get(0).getGstin();
-                        if (!replaceExisting) {
+                        if (!isGlobalReplace) {
                             Optional<ClientEntity> used = clientRepository.findByClientGstin(clientGstin);
                             if (used.isPresent()) {
                                 client = used.get();
@@ -658,8 +675,13 @@ public class ClientService {
                 memoryByGstin.put(client.getClientGstin(), client);
             }
 
-            // 2. Map vendors for this client (strict 1-to-many)
+            // 2. Map vendors for this client (client-wise replace or append)
             List<String> vendorGstins = item.getVendorGstins() != null ? item.getVendorGstins() : List.of();
+            if (!isNew && replaceClientVendors && !isGlobalReplace) {
+                // Replace ONLY this client's vendor mappings: all other clients remain completely safe & untouched!
+                mappingRepository.deleteByClientId(client.getId());
+                mappingRepository.flush();
+            }
             List<String> mappedGstins = mapVendors(client.getId(), vendorGstins);
             totalVendorsMapped += mappedGstins.size();
 
