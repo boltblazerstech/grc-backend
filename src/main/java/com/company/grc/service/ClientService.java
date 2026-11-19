@@ -372,7 +372,13 @@ public class ClientService {
         for (ClientVendorMappingEntity mapping : mappings) {
             String vendorGstin = mapping.getVendorGstin();
             Optional<GstDetailsEntity> gstOpt = gstDetailsRepository.findById(vendorGstin);
+            if (gstOpt.isEmpty()) {
+                gstOpt = gstDetailsRepository.findByGstinNormalized(vendorGstin);
+            }
             Optional<GrcScoreEntity> scoreOpt = grcScoreRepository.findById(vendorGstin);
+            if (scoreOpt.isEmpty()) {
+                scoreOpt = grcScoreRepository.findByGstinNormalized(vendorGstin);
+            }
 
             String rawTrade = gstOpt.map(GstDetailsEntity::getTradeName).orElse(null);
             String rawLegal = gstOpt.map(GstDetailsEntity::getLegalName).orElse(null);
@@ -396,6 +402,14 @@ public class ClientService {
             Integer delayCountGstr3b = gstOpt.map(GstDetailsEntity::getDelayCountGstr3b).orElse(null);
             String delayedMonthsGstr1 = gstOpt.map(GstDetailsEntity::getDelayedMonthsGstr1).orElse(null);
             String delayedMonthsGstr3b = gstOpt.map(GstDetailsEntity::getDelayedMonthsGstr3b).orElse(null);
+
+            // If GST status is Unknown or unverified, return filing counts must be null (missing / N/A)
+            if (gstStatus == null || "Unknown".equalsIgnoreCase(gstStatus.trim()) || "Error".equalsIgnoreCase(gstStatus.trim())) {
+                delayCountGstr1 = null;
+                delayCountGstr3b = null;
+                delayedMonthsGstr1 = null;
+                delayedMonthsGstr3b = null;
+            }
             Integer grcScore = scoreOpt.map(GrcScoreEntity::getScore).orElse(null);
 
             String gstdNo = gstOpt.map(GstDetailsEntity::getGstdNo).orElse(null);
