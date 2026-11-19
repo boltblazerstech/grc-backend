@@ -128,6 +128,46 @@ public class ClientMappingController {
     }
 
     /**
+     * Upload or update client logo mapped directly by its GSTIN.
+     * Automatically reused for all invoices and reports for this GSTIN.
+     */
+    @PostMapping("/logo/by-gstin/{gstin}")
+    public ResponseEntity<ClientDto.ClientLogoInfoDto> uploadLogoByGstin(
+            @PathVariable String gstin,
+            @RequestParam(value = "clientName", required = false) String clientName,
+            @RequestParam("file") MultipartFile file) throws IOException {
+        ClientDto.ClientLogoInfoDto updated = clientService.uploadLogoByGstin(gstin, clientName, file);
+        return ResponseEntity.ok(updated);
+    }
+
+    /**
+     * Retrieve raw logo image mapped by GSTIN.
+     */
+    @GetMapping("/logo/by-gstin/{gstin}")
+    public ResponseEntity<byte[]> getLogoByGstin(@PathVariable String gstin) {
+        ClientService.LogoData logoData = clientService.getLogoByGstin(gstin);
+        MediaType mediaType;
+        try {
+            mediaType = MediaType.parseMediaType(logoData.getContentType());
+        } catch (Exception e) {
+            mediaType = MediaType.IMAGE_PNG;
+        }
+
+        return ResponseEntity.ok()
+                .contentType(mediaType)
+                .header(HttpHeaders.CACHE_CONTROL, "max-age=86400, public")
+                .body(logoData.getData());
+    }
+
+    /**
+     * Check if logo exists for GSTIN and return metadata.
+     */
+    @GetMapping("/logo-info/by-gstin/{gstin}")
+    public ResponseEntity<ClientDto.ClientLogoInfoDto> getLogoInfoByGstin(@PathVariable String gstin) {
+        return ResponseEntity.ok(clientService.getLogoInfoByGstin(gstin));
+    }
+
+    /**
      * Retrieve all mapped vendors for the client with enriched GST & GRC score data.
      */
     @GetMapping("/{id}/vendors")

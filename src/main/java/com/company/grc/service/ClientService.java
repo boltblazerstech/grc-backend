@@ -2,9 +2,11 @@ package com.company.grc.service;
 
 import com.company.grc.dto.ClientDto;
 import com.company.grc.entity.ClientEntity;
+import com.company.grc.entity.ClientLogoEntity;
 import com.company.grc.entity.ClientVendorMappingEntity;
 import com.company.grc.entity.GrcScoreEntity;
 import com.company.grc.entity.GstDetailsEntity;
+import com.company.grc.repository.ClientLogoRepository;
 import com.company.grc.repository.ClientRepository;
 import com.company.grc.repository.ClientVendorMappingRepository;
 import com.company.grc.repository.GrcScoreRepository;
@@ -38,6 +40,7 @@ public class ClientService {
     private static final Pattern GSTIN_PATTERN = Pattern.compile("^[0-9A-Z]{15}$");
 
     private final ClientRepository clientRepository;
+    private final ClientLogoRepository clientLogoRepository;
     private final ClientVendorMappingRepository mappingRepository;
     private final GstDetailsRepository gstDetailsRepository;
     private final GrcScoreRepository grcScoreRepository;
@@ -46,12 +49,14 @@ public class ClientService {
 
     @Autowired
     public ClientService(ClientRepository clientRepository,
+                         ClientLogoRepository clientLogoRepository,
                          ClientVendorMappingRepository mappingRepository,
                          GstDetailsRepository gstDetailsRepository,
                          GrcScoreRepository grcScoreRepository,
                          PanHsnConfigRepository panHsnConfigRepository,
                          @Value("${app.frontend.url:https://grc.scrapli.in}") String frontendUrl) {
         this.clientRepository = clientRepository;
+        this.clientLogoRepository = clientLogoRepository;
         this.mappingRepository = mappingRepository;
         this.gstDetailsRepository = gstDetailsRepository;
         this.grcScoreRepository = grcScoreRepository;
@@ -89,9 +94,20 @@ public class ClientService {
             throw new IllegalArgumentException("A client with GSTIN " + gstin + " already exists.");
         }
 
+        // Auto-link persistent logo mapped to this GSTIN if available
+        String logoData = null;
+        String logoContentType = null;
+        Optional<ClientLogoEntity> existingLogo = clientLogoRepository.findByGstinIgnoreCase(gstin);
+        if (existingLogo.isPresent()) {
+            logoData = existingLogo.get().getLogoData();
+            logoContentType = existingLogo.get().getLogoContentType();
+        }
+
         ClientEntity client = ClientEntity.builder()
                 .clientGstin(gstin)
                 .clientName(name)
+                .logoData(logoData)
+                .logoContentType(logoContentType)
                 .build();
 
         ClientEntity saved = clientRepository.save(client);
@@ -108,6 +124,18 @@ public class ClientService {
                 throw new IllegalArgumentException("Another client with GSTIN " + gstin + " already exists.");
             }
             client.setClientGstin(gstin);
+
+            // If client has no logo but the new GSTIN has a mapped logo, attach it
+            if ((client.getLogoData() == null || client.getLogoData().isBlank())) {
+                Optional<ClientLogoEntity> existingLogo = clientLogoRepository.findByGstinIgnoreCase(gstin);
+                if (existingLogo.isPresent()) {
+                    client.setLogoData(existingLogo.get().getLogoData());
+                    client.setLogoContentType(existingLogo.get().getLogoContentType());
+                }
+            } else {
+                // Keep the persistent map synchronized with new GSTIN
+                saveOrUpdateLogoEntity(gstin, client.getClientName(), client.getLogoData(), client.getLogoContentType());
+            }
         }
 
         if (request.getClientName() != null && !request.getClientName().isBlank()) {
@@ -125,6 +153,20 @@ public class ClientService {
         }
         mappingRepository.deleteByClientId(id);
         clientRepository.deleteById(id);
+    }
+
+    @Transactional
+    public void saveOrUpdateLogoEntity(String gstin, String clientName, String base64Data, String contentType) {
+        if (gstin == null || gstin.trim().isBlank() || base64Data == null || base64Data.trim().isBlank()) return;
+        String cleanGstin = gstin.trim().toUpperCase();
+        Optional<ClientLogoEntity> existing = clientLogoRepository.findByGstinIgnoreCase(cleanGstin);
+        ClientLogoEntity entity = existing.orElseGet(() -> ClientLogoEntity.builder().gstin(cleanGstin).build());
+        if (clientName != null && !clientName.isBlank()) {
+            entity.setClientName(clientName.trim());
+        }
+        entity.setLogoData(base64Data);
+        entity.setLogoContentType(contentType != null ? contentType : "image/png");
+        clientLogoRepository.save(entity);
     }
 
     @Transactional
@@ -154,19 +196,143 @@ public class ClientService {
         client.setLogoContentType(determinedContentType);
         ClientEntity saved = clientRepository.save(client);
 
+        // Permanently map logo with client GSTIN for all future invoices & reports
+        if (saved.getClientGstin() != null && !saved.getClientGstin().isBlank()) {
+            saveOrUpdateLogoEntity(saved.getClientGstin(), saved.getClientName(), base64Data, determinedContentType);
+        }
+
         return mapToResponseDto(saved);
+    }
+
+    @Transactional
+    public ClientDto.ClientLogoInfoDto uploadLogoByGstin(String gstin, String clientName, MultipartFile file) throws IOException {
+        if (gstin == null || gstin.trim().isBlank()) {
+            throw new IllegalArgumentException("Client GSTIN is required.");
+        }
+        String cleanGstin = gstin.trim().toUpperCase();
+
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("Logo file is empty or missing.");
+        }
+        if (file.getSize() > MAX_LOGO_SIZE) {
+            throw new IllegalArgumentException("File size exceeds 2 MB limit.");
+        }
+
+        String contentType = file.getContentType();
+        String originalFilename = file.getOriginalFilename();
+
+        if (!isValidImageType(contentType, originalFilename)) {
+            throw new IllegalArgumentException("Invalid file type. Only PNG, JPEG, and SVG images are supported.");
+        }
+
+        String determinedContentType = determineContentType(contentType, originalFilename);
+        byte[] bytes = file.getBytes();
+        String base64Data = Base64.getEncoder().encodeToString(bytes);
+
+        // 1. Permanently map in client_logos table
+        saveOrUpdateLogoEntity(cleanGstin, clientName, base64Data, determinedContentType);
+
+        // 2. Also update in clients table if present
+        Optional<ClientEntity> clientOpt = clientRepository.findByClientGstin(cleanGstin);
+        if (clientOpt.isPresent()) {
+            ClientEntity client = clientOpt.get();
+            client.setLogoData(base64Data);
+            client.setLogoContentType(determinedContentType);
+            if (clientName != null && !clientName.isBlank() && (client.getClientName() == null || client.getClientName().isBlank())) {
+                client.setClientName(clientName.trim());
+            }
+            clientRepository.save(client);
+        }
+
+        return ClientDto.ClientLogoInfoDto.builder()
+                .gstin(cleanGstin)
+                .clientName(clientName)
+                .hasLogo(true)
+                .logoUrl("/api/admin/clients/logo/by-gstin/" + cleanGstin)
+                .build();
     }
 
     public LogoData getLogo(Long id) {
         ClientEntity client = getClientEntityById(id);
-        if (client.getLogoData() == null || client.getLogoData().isBlank()) {
-            throw new NoSuchElementException("No logo found for client id: " + id);
+        if (client.getLogoData() != null && !client.getLogoData().isBlank()) {
+            byte[] imageBytes = Base64.getDecoder().decode(client.getLogoData());
+            String contentType = client.getLogoContentType() != null ? client.getLogoContentType() : "image/png";
+            return new LogoData(imageBytes, contentType);
         }
 
-        byte[] imageBytes = Base64.getDecoder().decode(client.getLogoData());
-        String contentType = client.getLogoContentType() != null ? client.getLogoContentType() : "image/png";
+        // Check persistent client_logos table by GSTIN
+        if (client.getClientGstin() != null && !client.getClientGstin().isBlank()) {
+            Optional<ClientLogoEntity> logoOpt = clientLogoRepository.findByGstinIgnoreCase(client.getClientGstin());
+            if (logoOpt.isPresent() && logoOpt.get().getLogoData() != null && !logoOpt.get().getLogoData().isBlank()) {
+                byte[] imageBytes = Base64.getDecoder().decode(logoOpt.get().getLogoData());
+                String contentType = logoOpt.get().getLogoContentType() != null ? logoOpt.get().getLogoContentType() : "image/png";
+                return new LogoData(imageBytes, contentType);
+            }
+        }
 
-        return new LogoData(imageBytes, contentType);
+        throw new NoSuchElementException("No logo found for client id: " + id);
+    }
+
+    public LogoData getLogoByGstin(String gstin) {
+        if (gstin == null || gstin.trim().isBlank()) {
+            throw new NoSuchElementException("GSTIN is required.");
+        }
+        String cleanGstin = gstin.trim().toUpperCase();
+
+        // 1. Check client_logos table first
+        Optional<ClientLogoEntity> logoOpt = clientLogoRepository.findByGstinIgnoreCase(cleanGstin);
+        if (logoOpt.isPresent() && logoOpt.get().getLogoData() != null && !logoOpt.get().getLogoData().isBlank()) {
+            ClientLogoEntity entity = logoOpt.get();
+            byte[] imageBytes = Base64.getDecoder().decode(entity.getLogoData());
+            String ct = entity.getLogoContentType() != null ? entity.getLogoContentType() : "image/png";
+            return new LogoData(imageBytes, ct);
+        }
+
+        // 2. Fallback to clients table
+        Optional<ClientEntity> clientOpt = clientRepository.findByClientGstin(cleanGstin);
+        if (clientOpt.isPresent() && clientOpt.get().getLogoData() != null && !clientOpt.get().getLogoData().isBlank()) {
+            ClientEntity c = clientOpt.get();
+            // Automatically cache in client_logos
+            saveOrUpdateLogoEntity(cleanGstin, c.getClientName(), c.getLogoData(), c.getLogoContentType());
+            byte[] imageBytes = Base64.getDecoder().decode(c.getLogoData());
+            String ct = c.getLogoContentType() != null ? c.getLogoContentType() : "image/png";
+            return new LogoData(imageBytes, ct);
+        }
+
+        throw new NoSuchElementException("No logo found for GSTIN: " + cleanGstin);
+    }
+
+    public ClientDto.ClientLogoInfoDto getLogoInfoByGstin(String gstin) {
+        if (gstin == null || gstin.trim().isBlank()) {
+            return ClientDto.ClientLogoInfoDto.builder().hasLogo(false).build();
+        }
+        String cleanGstin = gstin.trim().toUpperCase();
+
+        Optional<ClientLogoEntity> logoOpt = clientLogoRepository.findByGstinIgnoreCase(cleanGstin);
+        if (logoOpt.isPresent() && logoOpt.get().getLogoData() != null && !logoOpt.get().getLogoData().isBlank()) {
+            return ClientDto.ClientLogoInfoDto.builder()
+                    .gstin(cleanGstin)
+                    .clientName(logoOpt.get().getClientName())
+                    .hasLogo(true)
+                    .logoUrl("/api/admin/clients/logo/by-gstin/" + cleanGstin)
+                    .build();
+        }
+
+        Optional<ClientEntity> clientOpt = clientRepository.findByClientGstin(cleanGstin);
+        if (clientOpt.isPresent() && clientOpt.get().getLogoData() != null && !clientOpt.get().getLogoData().isBlank()) {
+            return ClientDto.ClientLogoInfoDto.builder()
+                    .gstin(cleanGstin)
+                    .clientName(clientOpt.get().getClientName())
+                    .hasLogo(true)
+                    .logoUrl("/api/admin/clients/logo/by-gstin/" + cleanGstin)
+                    .build();
+        }
+
+        return ClientDto.ClientLogoInfoDto.builder()
+                .gstin(cleanGstin)
+                .hasLogo(false)
+                .logoUrl(null)
+                .build();
     }
 
     public List<ClientDto.MappedVendorDto> getMappedVendors(Long clientId) {
@@ -338,6 +504,14 @@ public class ClientService {
 
         boolean replaceExisting = request.getReplaceExisting() == null || Boolean.TRUE.equals(request.getReplaceExisting());
         if (replaceExisting) {
+            // Backup all existing client logos into client_logos table before clearing clients!
+            List<ClientEntity> existingClients = clientRepository.findAll();
+            for (ClientEntity ec : existingClients) {
+                if (ec.getClientGstin() != null && !ec.getClientGstin().isBlank()
+                        && ec.getLogoData() != null && !ec.getLogoData().isBlank()) {
+                    saveOrUpdateLogoEntity(ec.getClientGstin(), ec.getClientName(), ec.getLogoData(), ec.getLogoContentType());
+                }
+            }
             mappingRepository.deleteAllInBatch();
             clientRepository.deleteAllInBatch();
             mappingRepository.flush();
@@ -411,9 +585,22 @@ public class ClientService {
                         while (clientGstin.length() < 15) clientGstin = clientGstin + "X";
                     }
 
+                    // Auto-restore mapped logo for this GSTIN if present
+                    String logoData = null;
+                    String logoContentType = null;
+                    if (!clientGstin.isBlank()) {
+                        Optional<ClientLogoEntity> existingLogo = clientLogoRepository.findByGstinIgnoreCase(clientGstin);
+                        if (existingLogo.isPresent()) {
+                            logoData = existingLogo.get().getLogoData();
+                            logoContentType = existingLogo.get().getLogoContentType();
+                        }
+                    }
+
                     client = ClientEntity.builder()
                             .clientName(clientName)
                             .clientGstin(clientGstin)
+                            .logoData(logoData)
+                            .logoContentType(logoContentType)
                             .build();
                     client = clientRepository.saveAndFlush(client);
                     createdCount++;
@@ -477,6 +664,9 @@ public class ClientService {
                 gstType = gd.get().getGstType() != null ? gd.get().getGstType() : "";
             }
 
+            boolean clientHasLogo = (c.getLogoData() != null && !c.getLogoData().isBlank())
+                    || clientLogoRepository.existsByGstinIgnoreCase(gstin);
+
             resultMap.put(gstin, ClientDto.CompanySearchResultDto.builder()
                     .gstin(gstin)
                     .name(c.getClientName())
@@ -485,6 +675,8 @@ public class ClientService {
                     .address(address)
                     .gstType(gstType)
                     .source("Client")
+                    .hasLogo(clientHasLogo)
+                    .logoUrl(clientHasLogo ? "/api/admin/clients/logo/by-gstin/" + gstin : null)
                     .build());
         }
 
@@ -499,6 +691,8 @@ public class ClientService {
                     ? g.getTradeName()
                     : (g.getLegalName() != null ? g.getLegalName() : gstin);
 
+            boolean dbHasLogo = clientLogoRepository.existsByGstinIgnoreCase(gstin);
+
             resultMap.put(gstin, ClientDto.CompanySearchResultDto.builder()
                     .gstin(gstin)
                     .name(displayName)
@@ -507,6 +701,8 @@ public class ClientService {
                     .address(g.getAddress() != null ? g.getAddress() : "")
                     .gstType(g.getGstType())
                     .source("Database")
+                    .hasLogo(dbHasLogo)
+                    .logoUrl(dbHasLogo ? "/api/admin/clients/logo/by-gstin/" + gstin : null)
                     .build());
         }
 
@@ -515,7 +711,8 @@ public class ClientService {
 
     private ClientDto.ClientResponseDto mapToResponseDto(ClientEntity entity) {
         long vendorCount = mappingRepository.countByClientId(entity.getId());
-        boolean hasLogo = entity.getLogoData() != null && !entity.getLogoData().isBlank();
+        boolean hasLogo = (entity.getLogoData() != null && !entity.getLogoData().isBlank())
+                || (entity.getClientGstin() != null && clientLogoRepository.existsByGstinIgnoreCase(entity.getClientGstin()));
         String logoUrl = hasLogo ? "/api/admin/clients/" + entity.getId() + "/logo" : null;
 
         return ClientDto.ClientResponseDto.builder()

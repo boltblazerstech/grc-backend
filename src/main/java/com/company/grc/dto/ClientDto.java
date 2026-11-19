@@ -119,5 +119,18 @@ public class ClientDto {
         private String address;
         private String gstType;
         private String source; // "client" or "vendor" or "gst_details"
+        private Boolean hasLogo;
+        private String logoUrl;
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class ClientLogoInfoDto {
+        private String gstin;
+        private String clientName;
+        private Boolean hasLogo;
+        private String logoUrl;
     }
 }
