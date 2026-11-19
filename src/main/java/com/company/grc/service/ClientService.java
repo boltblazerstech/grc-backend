@@ -252,6 +252,33 @@ public class ClientService {
                 .build();
     }
 
+    @Transactional
+    public void deleteLogo(Long id) {
+        ClientEntity client = getClientEntityById(id);
+        client.setLogoData(null);
+        client.setLogoContentType(null);
+        clientRepository.save(client);
+
+        if (client.getClientGstin() != null && !client.getClientGstin().isBlank()) {
+            clientLogoRepository.deleteByGstinIgnoreCase(client.getClientGstin().trim());
+        }
+    }
+
+    @Transactional
+    public void deleteLogoByGstin(String gstin) {
+        if (gstin == null || gstin.trim().isBlank()) return;
+        String cleanGstin = gstin.trim().toUpperCase();
+        clientLogoRepository.deleteByGstinIgnoreCase(cleanGstin);
+
+        Optional<ClientEntity> clientOpt = clientRepository.findByClientGstin(cleanGstin);
+        if (clientOpt.isPresent()) {
+            ClientEntity client = clientOpt.get();
+            client.setLogoData(null);
+            client.setLogoContentType(null);
+            clientRepository.save(client);
+        }
+    }
+
     public LogoData getLogo(Long id) {
         ClientEntity client = getClientEntityById(id);
         if (client.getLogoData() != null && !client.getLogoData().isBlank()) {

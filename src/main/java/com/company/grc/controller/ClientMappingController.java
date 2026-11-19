@@ -168,6 +168,24 @@ public class ClientMappingController {
     }
 
     /**
+     * Delete/remove client logo by client ID.
+     */
+    @DeleteMapping("/{id}/logo")
+    public ResponseEntity<Map<String, String>> deleteLogo(@PathVariable Long id) {
+        clientService.deleteLogo(id);
+        return ResponseEntity.ok(Map.of("message", "Client logo removed successfully."));
+    }
+
+    /**
+     * Delete/remove client logo mapped by GSTIN.
+     */
+    @DeleteMapping("/logo/by-gstin/{gstin}")
+    public ResponseEntity<Map<String, String>> deleteLogoByGstin(@PathVariable String gstin) {
+        clientService.deleteLogoByGstin(gstin);
+        return ResponseEntity.ok(Map.of("message", "Client logo removed successfully for GSTIN."));
+    }
+
+    /**
      * Retrieve all mapped vendors for the client with enriched GST & GRC score data.
      */
     @GetMapping("/{id}/vendors")
