@@ -392,8 +392,8 @@ public class ClientService {
             }
 
             String gstStatus = gstOpt.map(GstDetailsEntity::getGstStatus).orElse("Unknown");
-            Integer delayCountGstr1 = gstOpt.map(GstDetailsEntity::getDelayCountGstr1).orElse(0);
-            Integer delayCountGstr3b = gstOpt.map(GstDetailsEntity::getDelayCountGstr3b).orElse(0);
+            Integer delayCountGstr1 = gstOpt.map(GstDetailsEntity::getDelayCountGstr1).orElse(null);
+            Integer delayCountGstr3b = gstOpt.map(GstDetailsEntity::getDelayCountGstr3b).orElse(null);
             String delayedMonthsGstr1 = gstOpt.map(GstDetailsEntity::getDelayedMonthsGstr1).orElse(null);
             String delayedMonthsGstr3b = gstOpt.map(GstDetailsEntity::getDelayedMonthsGstr3b).orElse(null);
             Integer grcScore = scoreOpt.map(GrcScoreEntity::getScore).orElse(null);
