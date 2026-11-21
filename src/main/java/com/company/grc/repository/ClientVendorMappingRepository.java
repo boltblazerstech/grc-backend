@@ -15,6 +15,9 @@ public interface ClientVendorMappingRepository extends JpaRepository<ClientVendo
 
     List<ClientVendorMappingEntity> findByClientId(Long clientId);
 
+    @Query("SELECT m FROM ClientVendorMappingEntity m JOIN FETCH m.client ORDER BY m.mappedAt DESC")
+    List<ClientVendorMappingEntity> findAllWithClient();
+
     Optional<ClientVendorMappingEntity> findByVendorGstin(String vendorGstin);
 
     boolean existsByVendorGstin(String vendorGstin);

@@ -53,6 +53,14 @@ public class ClientMappingController {
     }
 
     /**
+     * Retrieve all mapped vendors across all clients with enriched GST details, GRC score, and client info.
+     */
+    @GetMapping("/all-vendors")
+    public ResponseEntity<List<ClientDto.MappedVendorDto>> getAllMappedVendors() {
+        return ResponseEntity.ok(clientService.getAllMappedVendors());
+    }
+
+    /**
      * Bulk import clients and their mapped vendors from an uploaded sheet payload.
      */
     @PostMapping("/bulk-import")

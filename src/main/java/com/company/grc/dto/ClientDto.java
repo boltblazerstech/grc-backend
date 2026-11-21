@@ -74,6 +74,11 @@ public class ClientDto {
         private String coreActivity;
         private String aggregateTurnover;
         private String panNumber;
+
+        // Associated client information
+        private Long clientId;
+        private String clientName;
+        private String clientGstin;
     }
 
     @Data

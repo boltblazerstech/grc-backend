@@ -367,6 +367,18 @@ public class ClientService {
         getClientEntityById(clientId);
 
         List<ClientVendorMappingEntity> mappings = mappingRepository.findByClientId(clientId);
+        return enrichMappings(mappings);
+    }
+
+    /**
+     * Retrieve all mapped vendors across all clients with enriched GST details, GRC score, and client info.
+     */
+    public List<ClientDto.MappedVendorDto> getAllMappedVendors() {
+        List<ClientVendorMappingEntity> mappings = mappingRepository.findAllWithClient();
+        return enrichMappings(mappings);
+    }
+
+    private List<ClientDto.MappedVendorDto> enrichMappings(List<ClientVendorMappingEntity> mappings) {
         List<ClientDto.MappedVendorDto> result = new ArrayList<>();
 
         for (ClientVendorMappingEntity mapping : mappings) {
@@ -430,6 +442,10 @@ public class ClientService {
 
             String reportUrl = frontendUrl + "/vendor-report/" + vendorGstin;
 
+            Long clientIdVal = mapping.getClient() != null ? mapping.getClient().getId() : null;
+            String clientNameVal = mapping.getClient() != null ? mapping.getClient().getClientName() : null;
+            String clientGstinVal = mapping.getClient() != null ? mapping.getClient().getClientGstin() : null;
+
             result.add(ClientDto.MappedVendorDto.builder()
                     .vendorGstin(vendorGstin)
                     .tradeName(tradeName)
@@ -454,6 +470,9 @@ public class ClientService {
                     .coreActivity(coreActivity)
                     .aggregateTurnover(aggregateTurnover)
                     .panNumber(panNumber)
+                    .clientId(clientIdVal)
+                    .clientName(clientNameVal)
+                    .clientGstin(clientGstinVal)
                     .build());
         }
 
