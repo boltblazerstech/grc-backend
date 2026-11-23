@@ -372,112 +372,152 @@ public class ClientService {
 
     /**
      * Retrieve all mapped vendors across all clients with enriched GST details, GRC score, and client info.
+     * Also includes unmapped vendors from the master database marked as "Unassigned" so newly fetched vendors are visible.
      */
     public List<ClientDto.MappedVendorDto> getAllMappedVendors() {
         List<ClientVendorMappingEntity> mappings = mappingRepository.findAllWithClient();
-        return enrichMappings(mappings);
+        List<ClientDto.MappedVendorDto> result = new ArrayList<>(enrichMappings(mappings));
+
+        // Track GSTINs that are already mapped
+        Set<String> mappedGstins = mappings.stream()
+                .map(m -> m.getVendorGstin() != null ? m.getVendorGstin().trim().toUpperCase() : "")
+                .filter(s -> !s.isBlank())
+                .collect(Collectors.toSet());
+
+        // Also include unmapped vendors from master database so newly fetched vendors appear!
+        List<GstDetailsEntity> allGst = gstDetailsRepository.findAll();
+        for (GstDetailsEntity gst : allGst) {
+            String gstin = gst.getGstin() != null ? gst.getGstin().trim().toUpperCase() : null;
+            if (gstin != null && !gstin.isBlank() && !mappedGstins.contains(gstin)) {
+                result.add(buildMappedVendorDto(gst, gstin, null, "Unassigned", null, null));
+            }
+        }
+
+        result.sort(Comparator.comparing(ClientDto.MappedVendorDto::getMappedAt, Comparator.nullsLast(Comparator.reverseOrder())));
+        return result;
     }
 
     private List<ClientDto.MappedVendorDto> enrichMappings(List<ClientVendorMappingEntity> mappings) {
         List<ClientDto.MappedVendorDto> result = new ArrayList<>();
-
         for (ClientVendorMappingEntity mapping : mappings) {
             String vendorGstin = mapping.getVendorGstin();
             Optional<GstDetailsEntity> gstOpt = gstDetailsRepository.findById(vendorGstin);
             if (gstOpt.isEmpty()) {
                 gstOpt = gstDetailsRepository.findByGstinNormalized(vendorGstin);
             }
-            Optional<GrcScoreEntity> scoreOpt = grcScoreRepository.findById(vendorGstin);
-            if (scoreOpt.isEmpty()) {
-                scoreOpt = grcScoreRepository.findByGstinNormalized(vendorGstin);
-            }
-
-            String rawTrade = gstOpt.map(GstDetailsEntity::getTradeName).orElse(null);
-            String rawLegal = gstOpt.map(GstDetailsEntity::getLegalName).orElse(null);
-            String cleanTrade = isInvalidName(rawTrade) ? null : rawTrade.trim();
-            String cleanLegal = isInvalidName(rawLegal) ? null : rawLegal.trim();
-
-            // If tradeName is null/NA, fallback to legalName; if legalName is null/NA, fallback to tradeName
-            String tradeName = cleanTrade != null ? cleanTrade : cleanLegal;
-            String legalName = cleanLegal != null ? cleanLegal : cleanTrade;
-
-            String gstType = gstOpt.map(GstDetailsEntity::getGstType).orElse(null);
-            LocalDate regDate = gstOpt.map(GstDetailsEntity::getRegistrationDate).orElse(null);
-            Double ageYears = null;
-            if (regDate != null) {
-                long days = java.time.temporal.ChronoUnit.DAYS.between(regDate, LocalDate.now());
-                ageYears = Math.round((days / 365.25) * 10.0) / 10.0;
-            }
-
-            String gstStatus = gstOpt.map(GstDetailsEntity::getGstStatus).orElse("Unknown");
-            Integer delayCountGstr1 = gstOpt.map(GstDetailsEntity::getDelayCountGstr1).orElse(null);
-            Integer delayCountGstr3b = gstOpt.map(GstDetailsEntity::getDelayCountGstr3b).orElse(null);
-            String delayedMonthsGstr1 = gstOpt.map(GstDetailsEntity::getDelayedMonthsGstr1).orElse(null);
-            String delayedMonthsGstr3b = gstOpt.map(GstDetailsEntity::getDelayedMonthsGstr3b).orElse(null);
-
-            // If GST status is Unknown or unverified, return filing counts must be null (missing / N/A)
-            if (gstStatus == null || "Unknown".equalsIgnoreCase(gstStatus.trim()) || "Error".equalsIgnoreCase(gstStatus.trim())) {
-                delayCountGstr1 = null;
-                delayCountGstr3b = null;
-                delayedMonthsGstr1 = null;
-                delayedMonthsGstr3b = null;
-            }
-            Integer grcScore = scoreOpt.map(GrcScoreEntity::getScore).orElse(null);
-
-            String gstdNo = gstOpt.map(GstDetailsEntity::getGstdNo).orElse(null);
-            String gstr7Status = gstOpt.map(GstDetailsEntity::getGstr7Status).orElse(null);
-            Integer gstr7DelayCount = gstOpt.map(GstDetailsEntity::getGstr7DelayCount).orElse(0);
-            Integer gstr7MissedCount = gstOpt.map(GstDetailsEntity::getGstr7MissedCount).orElse(0);
-            String aadhaarValidation = gstOpt.map(GstDetailsEntity::getAadhaarValidation).orElse(null);
-            String coreActivity = gstOpt.map(GstDetailsEntity::getCoreActivity).orElse(null);
-            String aggregateTurnover = gstOpt.map(GstDetailsEntity::getAggregateTurnover).orElse(null);
-            String panNumber = gstOpt.map(GstDetailsEntity::getPanNumber).orElse(null);
-
-            Boolean tdsApplicable = null;
-            if (panNumber != null && !panNumber.isBlank()) {
-                tdsApplicable = panHsnConfigRepository.findById(panNumber)
-                        .map(com.company.grc.entity.PanHsnConfigEntity::getIsApplicable)
-                        .orElse(null);
-            }
-
-            String reportUrl = frontendUrl + "/vendor-report/" + vendorGstin;
 
             Long clientIdVal = mapping.getClient() != null ? mapping.getClient().getId() : null;
             String clientNameVal = mapping.getClient() != null ? mapping.getClient().getClientName() : null;
             String clientGstinVal = mapping.getClient() != null ? mapping.getClient().getClientGstin() : null;
 
-            result.add(ClientDto.MappedVendorDto.builder()
-                    .vendorGstin(vendorGstin)
-                    .tradeName(tradeName)
-                    .legalName(legalName)
-                    .gstType(gstType)
-                    .registrationDate(regDate)
-                    .ageYears(ageYears)
-                    .gstStatus(gstStatus)
-                    .delayCountGstr1(delayCountGstr1)
-                    .delayCountGstr3b(delayCountGstr3b)
-                    .delayedMonthsGstr1(delayedMonthsGstr1)
-                    .delayedMonthsGstr3b(delayedMonthsGstr3b)
-                    .grcScore(grcScore)
-                    .mappedAt(mapping.getMappedAt())
-                    .reportUrl(reportUrl)
-                    .gstdNo(gstdNo)
-                    .gstr7Status(gstr7Status)
-                    .gstr7DelayCount(gstr7DelayCount)
-                    .gstr7MissedCount(gstr7MissedCount)
-                    .tdsApplicable(tdsApplicable)
-                    .aadhaarValidation(aadhaarValidation)
-                    .coreActivity(coreActivity)
-                    .aggregateTurnover(aggregateTurnover)
-                    .panNumber(panNumber)
-                    .clientId(clientIdVal)
-                    .clientName(clientNameVal)
-                    .clientGstin(clientGstinVal)
-                    .build());
+            result.add(buildMappedVendorDto(gstOpt.orElse(null), vendorGstin, clientIdVal, clientNameVal, clientGstinVal, mapping.getMappedAt()));
+        }
+        return result;
+    }
+
+    private ClientDto.MappedVendorDto buildMappedVendorDto(
+            GstDetailsEntity gst,
+            String vendorGstin,
+            Long clientId,
+            String clientName,
+            String clientGstin,
+            LocalDateTime mappedAt) {
+
+        Optional<GstDetailsEntity> gstOpt = Optional.ofNullable(gst);
+        if (gstOpt.isEmpty() && vendorGstin != null) {
+            gstOpt = gstDetailsRepository.findById(vendorGstin);
+            if (gstOpt.isEmpty()) {
+                gstOpt = gstDetailsRepository.findByGstinNormalized(vendorGstin);
+            }
         }
 
-        result.sort(Comparator.comparing(ClientDto.MappedVendorDto::getMappedAt, Comparator.nullsLast(Comparator.reverseOrder())));
-        return result;
+        String actualGstin = vendorGstin != null ? vendorGstin : gstOpt.map(GstDetailsEntity::getGstin).orElse("");
+        Optional<GrcScoreEntity> scoreOpt = Optional.empty();
+        if (!actualGstin.isBlank()) {
+            scoreOpt = grcScoreRepository.findById(actualGstin);
+            if (scoreOpt.isEmpty()) {
+                scoreOpt = grcScoreRepository.findByGstinNormalized(actualGstin);
+            }
+        }
+
+        String rawTrade = gstOpt.map(GstDetailsEntity::getTradeName).orElse(null);
+        String rawLegal = gstOpt.map(GstDetailsEntity::getLegalName).orElse(null);
+        String cleanTrade = isInvalidName(rawTrade) ? null : rawTrade.trim();
+        String cleanLegal = isInvalidName(rawLegal) ? null : rawLegal.trim();
+
+        // If tradeName is null/NA, fallback to legalName; if legalName is null/NA, fallback to tradeName
+        String tradeName = cleanTrade != null ? cleanTrade : cleanLegal;
+        String legalName = cleanLegal != null ? cleanLegal : cleanTrade;
+
+        String gstType = gstOpt.map(GstDetailsEntity::getGstType).orElse(null);
+        LocalDate regDate = gstOpt.map(GstDetailsEntity::getRegistrationDate).orElse(null);
+        Double ageYears = null;
+        if (regDate != null) {
+            long days = java.time.temporal.ChronoUnit.DAYS.between(regDate, LocalDate.now());
+            ageYears = Math.round((days / 365.25) * 10.0) / 10.0;
+        }
+
+        String gstStatus = gstOpt.map(GstDetailsEntity::getGstStatus).orElse("Unknown");
+        Integer delayCountGstr1 = gstOpt.map(GstDetailsEntity::getDelayCountGstr1).orElse(null);
+        Integer delayCountGstr3b = gstOpt.map(GstDetailsEntity::getDelayCountGstr3b).orElse(null);
+        String delayedMonthsGstr1 = gstOpt.map(GstDetailsEntity::getDelayedMonthsGstr1).orElse(null);
+        String delayedMonthsGstr3b = gstOpt.map(GstDetailsEntity::getDelayedMonthsGstr3b).orElse(null);
+
+        // If GST status is Unknown or unverified, return filing counts must be null (missing / N/A)
+        if (gstStatus == null || "Unknown".equalsIgnoreCase(gstStatus.trim()) || "Error".equalsIgnoreCase(gstStatus.trim())) {
+            delayCountGstr1 = null;
+            delayCountGstr3b = null;
+            delayedMonthsGstr1 = null;
+            delayedMonthsGstr3b = null;
+        }
+        Integer grcScore = scoreOpt.map(GrcScoreEntity::getScore).orElse(null);
+
+        String gstdNo = gstOpt.map(GstDetailsEntity::getGstdNo).orElse(null);
+        String gstr7Status = gstOpt.map(GstDetailsEntity::getGstr7Status).orElse(null);
+        Integer gstr7DelayCount = gstOpt.map(GstDetailsEntity::getGstr7DelayCount).orElse(0);
+        Integer gstr7MissedCount = gstOpt.map(GstDetailsEntity::getGstr7MissedCount).orElse(0);
+        String aadhaarValidation = gstOpt.map(GstDetailsEntity::getAadhaarValidation).orElse(null);
+        String coreActivity = gstOpt.map(GstDetailsEntity::getCoreActivity).orElse(null);
+        String aggregateTurnover = gstOpt.map(GstDetailsEntity::getAggregateTurnover).orElse(null);
+        String panNumber = gstOpt.map(GstDetailsEntity::getPanNumber).orElse(null);
+
+        Boolean tdsApplicable = null;
+        if (panNumber != null && !panNumber.isBlank()) {
+            tdsApplicable = panHsnConfigRepository.findById(panNumber)
+                    .map(com.company.grc.entity.PanHsnConfigEntity::getIsApplicable)
+                    .orElse(null);
+        }
+
+        String reportUrl = frontendUrl + "/vendor-report/" + actualGstin;
+
+        return ClientDto.MappedVendorDto.builder()
+                .vendorGstin(actualGstin)
+                .tradeName(tradeName)
+                .legalName(legalName)
+                .gstType(gstType)
+                .registrationDate(regDate)
+                .ageYears(ageYears)
+                .gstStatus(gstStatus)
+                .delayCountGstr1(delayCountGstr1)
+                .delayCountGstr3b(delayCountGstr3b)
+                .delayedMonthsGstr1(delayedMonthsGstr1)
+                .delayedMonthsGstr3b(delayedMonthsGstr3b)
+                .grcScore(grcScore)
+                .mappedAt(mappedAt)
+                .reportUrl(reportUrl)
+                .gstdNo(gstdNo)
+                .gstr7Status(gstr7Status)
+                .gstr7DelayCount(gstr7DelayCount)
+                .gstr7MissedCount(gstr7MissedCount)
+                .tdsApplicable(tdsApplicable)
+                .aadhaarValidation(aadhaarValidation)
+                .coreActivity(coreActivity)
+                .aggregateTurnover(aggregateTurnover)
+                .panNumber(panNumber)
+                .clientId(clientId)
+                .clientName(clientName)
+                .clientGstin(clientGstin)
+                .build();
     }
 
     /**
