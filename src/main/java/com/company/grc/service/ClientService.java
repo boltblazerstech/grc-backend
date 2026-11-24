@@ -460,8 +460,16 @@ public class ClientService {
         String gstStatus = gstOpt.map(GstDetailsEntity::getGstStatus).orElse("Unknown");
         Integer delayCountGstr1 = gstOpt.map(GstDetailsEntity::getDelayCountGstr1).orElse(null);
         Integer delayCountGstr3b = gstOpt.map(GstDetailsEntity::getDelayCountGstr3b).orElse(null);
-        String delayedMonthsGstr1 = gstOpt.map(GstDetailsEntity::getDelayedMonthsGstr1).orElse(null);
-        String delayedMonthsGstr3b = gstOpt.map(GstDetailsEntity::getDelayedMonthsGstr3b).orElse(null);
+        String delayedMonthsGstr1 = ComplianceRetentionService.pruneTo18MonthWindow(gstOpt.map(GstDetailsEntity::getDelayedMonthsGstr1).orElse(null));
+        String delayedMonthsGstr3b = ComplianceRetentionService.pruneTo18MonthWindow(gstOpt.map(GstDetailsEntity::getDelayedMonthsGstr3b).orElse(null));
+
+        // If delayed months exist within the rolling 18-month window, ensure delay count reflects them
+        if (delayedMonthsGstr1 != null && (delayCountGstr1 == null || delayCountGstr1 == 0)) {
+            delayCountGstr1 = ComplianceRetentionService.countMonthsIn18MonthWindow(delayedMonthsGstr1);
+        }
+        if (delayedMonthsGstr3b != null && (delayCountGstr3b == null || delayCountGstr3b == 0)) {
+            delayCountGstr3b = ComplianceRetentionService.countMonthsIn18MonthWindow(delayedMonthsGstr3b);
+        }
 
         // If GST status is Unknown or unverified, return filing counts must be null (missing / N/A)
         if (gstStatus == null || "Unknown".equalsIgnoreCase(gstStatus.trim()) || "Error".equalsIgnoreCase(gstStatus.trim())) {

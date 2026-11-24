@@ -197,8 +197,8 @@ public class GrcCalculationService {
                 .aggregateTurnover(details.getAggregateTurnover())
                 .delayCountGstr1(details.getDelayCountGstr1())
                 .delayCountGstr3b(details.getDelayCountGstr3b())
-                .delayedMonthsGstr1(details.getDelayedMonthsGstr1())
-                .delayedMonthsGstr3b(details.getDelayedMonthsGstr3b())
+                .delayedMonthsGstr1(ComplianceRetentionService.pruneTo18MonthWindow(details.getDelayedMonthsGstr1()))
+                .delayedMonthsGstr3b(ComplianceRetentionService.pruneTo18MonthWindow(details.getDelayedMonthsGstr3b()))
                 .source(details.getSource())
                 .apiError(details.getApiError())
                 .dataSource(details.getDataSource())
@@ -406,15 +406,21 @@ public class GrcCalculationService {
         if (request.getDelayCountGstr3b() != null) details.setDelayCountGstr3b(request.getDelayCountGstr3b());
 
         if (request.getDelayedMonthsGstr1() != null) {
-            String m1 = request.getDelayedMonthsGstr1().trim();
-            details.setDelayedMonthsGstr1(m1.isEmpty() ? null : m1);
+            String pruned1 = ComplianceRetentionService.pruneTo18MonthWindow(request.getDelayedMonthsGstr1());
+            details.setDelayedMonthsGstr1(pruned1);
+            if (pruned1 != null) {
+                details.setDelayCountGstr1(ComplianceRetentionService.countMonthsIn18MonthWindow(pruned1));
+            }
         } else if (request.getDelayCountGstr1() != null && request.getDelayCountGstr1() == 0) {
             details.setDelayedMonthsGstr1(null);
         }
 
         if (request.getDelayedMonthsGstr3b() != null) {
-            String m3b = request.getDelayedMonthsGstr3b().trim();
-            details.setDelayedMonthsGstr3b(m3b.isEmpty() ? null : m3b);
+            String pruned3b = ComplianceRetentionService.pruneTo18MonthWindow(request.getDelayedMonthsGstr3b());
+            details.setDelayedMonthsGstr3b(pruned3b);
+            if (pruned3b != null) {
+                details.setDelayCountGstr3b(ComplianceRetentionService.countMonthsIn18MonthWindow(pruned3b));
+            }
         } else if (request.getDelayCountGstr3b() != null && request.getDelayCountGstr3b() == 0) {
             details.setDelayedMonthsGstr3b(null);
         }
