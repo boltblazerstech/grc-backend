@@ -79,6 +79,20 @@ public class ClientDto {
         private Long clientId;
         private String clientName;
         private String clientGstin;
+
+        // Multi-client support for common suppliers linked to multiple clients
+        private List<ClientInfoDto> linkedClients;
+        private Integer linkedClientCount;
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class ClientInfoDto {
+        private Long clientId;
+        private String clientName;
+        private String clientGstin;
     }
 
     @Data

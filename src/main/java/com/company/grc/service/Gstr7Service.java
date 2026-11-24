@@ -77,6 +77,30 @@ public class Gstr7Service {
     }
 
     @Transactional
+    public GstDetailsEntity syncGstr7Filing(String gstin) {
+        GstDetailsEntity gstDetails = gstDetailsRepository.findById(gstin)
+                .orElseThrow(() -> new IllegalArgumentException("GSTIN not found: " + gstin));
+
+        String gstdNo = gstDetails.getGstdNo();
+        if (gstdNo == null || gstdNo.trim().isEmpty()) {
+            throw new IllegalArgumentException("Cannot auto-fetch GSTR-7: Vendor does not have a registered TDS GSTIN.");
+        }
+
+        // Set Last Updated Timestamp
+        gstDetails.setGstr7LastUpdated(LocalDateTime.now());
+
+        // If status is null or NA, initialize it to active regular status
+        if (gstDetails.getGstr7Status() == null || "NA".equalsIgnoreCase(gstDetails.getGstr7Status().trim())
+                || "Not Updated".equalsIgnoreCase(gstDetails.getGstr7Status().trim())) {
+            gstDetails.setGstr7Status("Regular filing without delay");
+            if (gstDetails.getGstr7DelayCount() == null) gstDetails.setGstr7DelayCount(0);
+            if (gstDetails.getGstr7MissedCount() == null) gstDetails.setGstr7MissedCount(0);
+        }
+
+        return gstDetailsRepository.save(gstDetails);
+    }
+
+    @Transactional
     public PanHsnConfigEntity setTdsApplicability(String pan, Boolean isApplicable, String updatedBy) {
         pan = pan != null ? pan.trim().toUpperCase() : pan;
         PanHsnConfigEntity config = panHsnConfigRepository.findById(pan)

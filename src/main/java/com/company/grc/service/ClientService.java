@@ -366,17 +366,53 @@ public class ClientService {
         // Ensure client exists
         getClientEntityById(clientId);
 
-        List<ClientVendorMappingEntity> mappings = mappingRepository.findByClientId(clientId);
-        return enrichMappings(mappings);
+        List<ClientVendorMappingEntity> clientMappings = mappingRepository.findByClientId(clientId);
+        List<ClientVendorMappingEntity> allMappings = mappingRepository.findAllWithClient();
+
+        // Index all linked clients per vendor GSTIN
+        Map<String, List<ClientDto.ClientInfoDto>> clientMapByGstin = new HashMap<>();
+        for (ClientVendorMappingEntity m : allMappings) {
+            if (m.getClient() != null && m.getVendorGstin() != null) {
+                clientMapByGstin.computeIfAbsent(m.getVendorGstin().trim().toUpperCase(), k -> new ArrayList<>())
+                        .add(ClientDto.ClientInfoDto.builder()
+                                .clientId(m.getClient().getId())
+                                .clientName(m.getClient().getClientName())
+                                .clientGstin(m.getClient().getClientGstin())
+                                .build());
+            }
+        }
+
+        List<ClientDto.MappedVendorDto> result = new ArrayList<>();
+        for (ClientVendorMappingEntity mapping : clientMappings) {
+            String vendorGstin = mapping.getVendorGstin();
+            Optional<GstDetailsEntity> gstOpt = gstDetailsRepository.findById(vendorGstin);
+            if (gstOpt.isEmpty()) {
+                gstOpt = gstDetailsRepository.findByGstinNormalized(vendorGstin);
+            }
+
+            Long clientIdVal = mapping.getClient() != null ? mapping.getClient().getId() : clientId;
+            String clientNameVal = mapping.getClient() != null ? mapping.getClient().getClientName() : null;
+            String clientGstinVal = mapping.getClient() != null ? mapping.getClient().getClientGstin() : null;
+
+            List<ClientDto.ClientInfoDto> linkedClients = clientMapByGstin.getOrDefault(
+                    vendorGstin != null ? vendorGstin.trim().toUpperCase() : "",
+                    Collections.emptyList()
+            );
+
+            result.add(buildMappedVendorDto(gstOpt.orElse(null), vendorGstin, clientIdVal, clientNameVal, clientGstinVal, mapping.getMappedAt(), linkedClients));
+        }
+
+        return result;
     }
 
     /**
      * Retrieve all mapped vendors across all clients with enriched GST details, GRC score, and client info.
+     * Consolidates common suppliers shared across multiple clients into a single entry with linkedClients.
      * Also includes unmapped vendors from the master database marked as "Unassigned" so newly fetched vendors are visible.
      */
     public List<ClientDto.MappedVendorDto> getAllMappedVendors() {
         List<ClientVendorMappingEntity> mappings = mappingRepository.findAllWithClient();
-        List<ClientDto.MappedVendorDto> result = new ArrayList<>(enrichMappings(mappings));
+        List<ClientDto.MappedVendorDto> result = new ArrayList<>(enrichMappingsGrouped(mappings));
 
         // Track GSTINs that are already mapped
         Set<String> mappedGstins = mappings.stream()
@@ -389,7 +425,7 @@ public class ClientService {
         for (GstDetailsEntity gst : allGst) {
             String gstin = gst.getGstin() != null ? gst.getGstin().trim().toUpperCase() : null;
             if (gstin != null && !gstin.isBlank() && !mappedGstins.contains(gstin)) {
-                result.add(buildMappedVendorDto(gst, gstin, null, "Unassigned", null, null));
+                result.add(buildMappedVendorDto(gst, gstin, null, "Unassigned", null, null, Collections.emptyList()));
             }
         }
 
@@ -397,20 +433,48 @@ public class ClientService {
         return result;
     }
 
-    private List<ClientDto.MappedVendorDto> enrichMappings(List<ClientVendorMappingEntity> mappings) {
+    private List<ClientDto.MappedVendorDto> enrichMappingsGrouped(List<ClientVendorMappingEntity> mappings) {
+        // Group mappings by vendor GSTIN (case-insensitive) to support common suppliers across clients
+        Map<String, List<ClientVendorMappingEntity>> byGstin = new LinkedHashMap<>();
+        for (ClientVendorMappingEntity m : mappings) {
+            if (m.getVendorGstin() != null && !m.getVendorGstin().isBlank()) {
+                byGstin.computeIfAbsent(m.getVendorGstin().trim().toUpperCase(), k -> new ArrayList<>()).add(m);
+            }
+        }
+
         List<ClientDto.MappedVendorDto> result = new ArrayList<>();
-        for (ClientVendorMappingEntity mapping : mappings) {
-            String vendorGstin = mapping.getVendorGstin();
+        for (Map.Entry<String, List<ClientVendorMappingEntity>> entry : byGstin.entrySet()) {
+            String vendorGstin = entry.getKey();
+            List<ClientVendorMappingEntity> vendorMappings = entry.getValue();
+
+            List<ClientDto.ClientInfoDto> linkedClients = new ArrayList<>();
+            for (ClientVendorMappingEntity vm : vendorMappings) {
+                if (vm.getClient() != null) {
+                    linkedClients.add(ClientDto.ClientInfoDto.builder()
+                            .clientId(vm.getClient().getId())
+                            .clientName(vm.getClient().getClientName())
+                            .clientGstin(vm.getClient().getClientGstin())
+                            .build());
+                }
+            }
+
+            ClientVendorMappingEntity firstMapping = vendorMappings.get(0);
+            Long clientIdVal = firstMapping.getClient() != null ? firstMapping.getClient().getId() : null;
+            String clientNameVal = firstMapping.getClient() != null ? firstMapping.getClient().getClientName() : null;
+            String clientGstinVal = firstMapping.getClient() != null ? firstMapping.getClient().getClientGstin() : null;
+
+            LocalDateTime latestMappedAt = vendorMappings.stream()
+                    .map(ClientVendorMappingEntity::getMappedAt)
+                    .filter(Objects::nonNull)
+                    .max(Comparator.naturalOrder())
+                    .orElse(firstMapping.getMappedAt());
+
             Optional<GstDetailsEntity> gstOpt = gstDetailsRepository.findById(vendorGstin);
             if (gstOpt.isEmpty()) {
                 gstOpt = gstDetailsRepository.findByGstinNormalized(vendorGstin);
             }
 
-            Long clientIdVal = mapping.getClient() != null ? mapping.getClient().getId() : null;
-            String clientNameVal = mapping.getClient() != null ? mapping.getClient().getClientName() : null;
-            String clientGstinVal = mapping.getClient() != null ? mapping.getClient().getClientGstin() : null;
-
-            result.add(buildMappedVendorDto(gstOpt.orElse(null), vendorGstin, clientIdVal, clientNameVal, clientGstinVal, mapping.getMappedAt()));
+            result.add(buildMappedVendorDto(gstOpt.orElse(null), vendorGstin, clientIdVal, clientNameVal, clientGstinVal, latestMappedAt, linkedClients));
         }
         return result;
     }
@@ -421,7 +485,8 @@ public class ClientService {
             Long clientId,
             String clientName,
             String clientGstin,
-            LocalDateTime mappedAt) {
+            LocalDateTime mappedAt,
+            List<ClientDto.ClientInfoDto> linkedClients) {
 
         Optional<GstDetailsEntity> gstOpt = Optional.ofNullable(gst);
         if (gstOpt.isEmpty() && vendorGstin != null) {
@@ -525,13 +590,15 @@ public class ClientService {
                 .clientId(clientId)
                 .clientName(clientName)
                 .clientGstin(clientGstin)
+                .linkedClients(linkedClients != null ? linkedClients : Collections.emptyList())
+                .linkedClientCount(linkedClients != null ? linkedClients.size() : 0)
                 .build();
     }
 
     /**
-     * Map vendors to a client (strict 1-to-many: one vendor mapped with one client only).
-     * If a vendor is already mapped to this client, it is kept.
-     * If a vendor was previously mapped to another client, it is moved to this client.
+     * Map vendors to a client (supports common suppliers across multiple clients).
+     * If a vendor is already mapped to this client, it is preserved.
+     * If a vendor is mapped to another client, it is also linked to this client (shared supplier).
      */
     @Transactional
     public List<String> mapVendors(Long clientId, List<String> vendorGstins) {
@@ -546,27 +613,17 @@ public class ClientService {
             if (rawGstin == null || rawGstin.trim().isBlank()) continue;
             String gstin = rawGstin.trim().toUpperCase();
 
-            Optional<ClientVendorMappingEntity> existingOpt = mappingRepository.findByVendorGstin(gstin);
-            if (existingOpt.isPresent()) {
-                ClientVendorMappingEntity existing = existingOpt.get();
-                if (existing.getClient().getId().equals(clientId)) {
-                    // Already mapped to this client
-                    continue;
-                } else {
-                    // Was mapped to another client: reassign exclusively to this client
-                    existing.setClient(client);
-                    existing.setMappedAt(LocalDateTime.now());
-                    mappingRepository.saveAndFlush(existing);
-                    newlyMapped.add(gstin);
-                }
-            } else {
-                ClientVendorMappingEntity mapping = ClientVendorMappingEntity.builder()
-                        .client(client)
-                        .vendorGstin(gstin)
-                        .build();
-                mappingRepository.saveAndFlush(mapping);
-                newlyMapped.add(gstin);
+            // If already mapped to this client, preserve it
+            if (mappingRepository.existsByClientIdAndVendorGstin(clientId, gstin)) {
+                continue;
             }
+
+            ClientVendorMappingEntity mapping = ClientVendorMappingEntity.builder()
+                    .client(client)
+                    .vendorGstin(gstin)
+                    .build();
+            mappingRepository.saveAndFlush(mapping);
+            newlyMapped.add(gstin);
         }
 
         return newlyMapped;
@@ -594,20 +651,32 @@ public class ClientService {
 
     /**
      * Returns a dictionary of all assigned vendors across all clients:
-     * { "VENDOR_GSTIN": { "clientId": 1, "clientName": "Tata", "clientGstin": "..." } }
+     * { "VENDOR_GSTIN": { "clientId": 1, "clientName": "Tata", "allClients": [...], "clientCount": 2 } }
      */
     public Map<String, Map<String, Object>> getAllAssignedVendors() {
-        List<ClientVendorMappingEntity> all = mappingRepository.findAll();
+        List<ClientVendorMappingEntity> all = mappingRepository.findAllWithClient();
+        Map<String, List<Map<String, Object>>> multiMap = new HashMap<>();
         Map<String, Map<String, Object>> result = new HashMap<>();
+
         for (ClientVendorMappingEntity m : all) {
-            if (m.getClient() != null) {
+            if (m.getClient() != null && m.getVendorGstin() != null) {
+                String gstin = m.getVendorGstin().trim().toUpperCase();
                 Map<String, Object> info = new HashMap<>();
                 info.put("clientId", m.getClient().getId());
                 info.put("clientName", m.getClient().getClientName());
                 info.put("clientGstin", m.getClient().getClientGstin());
-                result.put(m.getVendorGstin(), info);
+                multiMap.computeIfAbsent(gstin, k -> new ArrayList<>()).add(info);
             }
         }
+
+        for (Map.Entry<String, List<Map<String, Object>>> entry : multiMap.entrySet()) {
+            List<Map<String, Object>> list = entry.getValue();
+            Map<String, Object> primary = new HashMap<>(list.get(0));
+            primary.put("allClients", list);
+            primary.put("clientCount", list.size());
+            result.put(entry.getKey(), primary);
+        }
+
         return result;
     }
 
