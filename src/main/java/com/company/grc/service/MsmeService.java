@@ -5,7 +5,6 @@ import com.company.grc.entity.MsmeApiLogEntity;
 import com.company.grc.entity.MsmeDetailsEntity;
 import com.company.grc.repository.MsmeApiLogRepository;
 import com.company.grc.repository.MsmeDetailsRepository;
-import com.fasterxml.jackson.databind.JsonNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -26,15 +25,15 @@ public class MsmeService {
 
     private final MsmeDetailsRepository msmeDetailsRepository;
     private final MsmeApiLogRepository msmeApiLogRepository;
-    private final DeepvueApiService deepvueApiService;
 
     /**
      * Retrieves MSME details for a given GSTIN following the Database-First architecture
-     * and strictly enforcing the 50 hits/day cost control cap for automated calls.
+     * and enforcing daily cost control rules.
+     * Note: External paid providers (such as DeepVue) are strictly excluded; Figmit integration will be added later.
      *
      * @param gstin        15-character vendor GSTIN
      * @param isManual     true if triggered by a user's manual action (bypasses 50/day cap)
-     * @param forceRefresh true to bypass database-first cache and perform fresh fetch
+     * @param forceRefresh true if user explicitly requested a fresh check
      */
     @Transactional
     public MsmeDto.MsmeDetailsResponse getMsmeDetails(String gstin, boolean isManual, boolean forceRefresh) {
@@ -49,7 +48,7 @@ public class MsmeService {
         long todayAutoCalls = msmeApiLogRepository.countByCallDateAndCallType(today, "AUTO");
         long remainingQuota = Math.max(0, DAILY_AUTO_LIMIT - todayAutoCalls);
 
-        // 1. Database-First Layer: check local database first
+        // 1. Database-First Layer: check local database first (zero API cost)
         if (!forceRefresh) {
             Optional<MsmeDetailsEntity> existingOpt = msmeDetailsRepository.findByGstinIgnoreCase(cleanGstin);
             if (existingOpt.isEmpty()) {
@@ -69,17 +68,8 @@ public class MsmeService {
             log.warn("MSME Daily Auto Limit Reached ({} / {}). Blocking automated fetch for GSTIN: {}",
                     todayAutoCalls, DAILY_AUTO_LIMIT, cleanGstin);
 
-            MsmeApiLogEntity limitLog = MsmeApiLogEntity.builder()
-                    .callDate(today)
-                    .callTimestamp(LocalDateTime.now())
-                    .callType("AUTO")
-                    .gstin(cleanGstin)
-                    .panNumber(pan)
-                    .httpStatus(429)
-                    .status("LIMIT_REACHED")
-                    .errorMessage("Daily auto limit of " + DAILY_AUTO_LIMIT + " API hits reached. Automated sync blocked.")
-                    .build();
-            msmeApiLogRepository.save(limitLog);
+            recordLog(today, "AUTO", cleanGstin, pan, 429, "LIMIT_REACHED",
+                    "Daily auto limit of " + DAILY_AUTO_LIMIT + " API hits reached. Automated sync blocked.");
 
             return MsmeDto.MsmeDetailsResponse.builder()
                     .gstin(cleanGstin)
@@ -92,98 +82,23 @@ public class MsmeService {
                     .build();
         }
 
-        // 3. Fetch from External Provider (DeepVue PAN-to-MSME)
-        try {
-            log.info("Initiating external MSME API call for PAN: {} (Type: {}, Today Auto Calls: {}/{})",
-                    pan, callType, todayAutoCalls, DAILY_AUTO_LIMIT);
+        // 3. Not in database: External provider (DeepVue) is omitted.
+        // Figmit provider integration will be connected later as instructed.
+        recordLog(today, callType, cleanGstin, pan, 200, "NOT_IN_DATABASE",
+                "Vendor not found in local database. External provider integration (Figmit) pending.");
 
-            JsonNode apiRoot = deepvueApiService.fetchMsmeDetails(pan);
-            String subCode = apiRoot.path("sub_code").asText("UNKNOWN");
-            int httpStatus = apiRoot.path("code").asInt(200);
+        long updatedRemaining = isManual ? remainingQuota : Math.max(0, remainingQuota - 1);
+        pruneAuditLogsOlderThan60Days(today);
 
-            if (!"SUCCESS".equalsIgnoreCase(subCode) || apiRoot.path("data").isMissingNode() || apiRoot.path("data").isNull()) {
-                String errorMsg = apiRoot.path("message").asText("No MSME record found for PAN " + pan);
-
-                // Save negative cache in database so repeated calls are avoided
-                MsmeDetailsEntity notFoundEntity = msmeDetailsRepository.findByGstinIgnoreCase(cleanGstin)
-                        .orElse(MsmeDetailsEntity.builder().gstin(cleanGstin).panNumber(pan).build());
-                notFoundEntity.setMsmeStatus("NOT_REGISTERED");
-                notFoundEntity.setIsManual(isManual);
-                notFoundEntity.setRawResponseJson(apiRoot.toString());
-                notFoundEntity.setLastFetchedAt(LocalDateTime.now());
-                msmeDetailsRepository.save(notFoundEntity);
-
-                // Log audit
-                recordLog(today, callType, cleanGstin, pan, httpStatus, "NO_RECORD", errorMsg);
-
-                long updatedRemaining = isManual ? remainingQuota : Math.max(0, remainingQuota - 1);
-                return mapToResponse(notFoundEntity, "EXTERNAL_API", false, updatedRemaining, errorMsg);
-            }
-
-            JsonNode data = apiRoot.path("data");
-            MsmeDetailsEntity entity = msmeDetailsRepository.findByGstinIgnoreCase(cleanGstin)
-                    .orElse(MsmeDetailsEntity.builder().gstin(cleanGstin).panNumber(pan).build());
-
-            entity.setMsmeStatus("VERIFIED");
-            entity.setUdyamNumber(data.path("udyam_number").asText(null));
-            entity.setEnterpriseName(data.path("enterprise_name").asText(null));
-            entity.setOrganizationType(data.path("organization_type").asText(null));
-            entity.setMajorActivity(data.path("major_activity").asText(null));
-            entity.setDateOfIncorporation(data.path("date_of_incorporation").asText(null));
-            entity.setDateOfCommencement(data.path("date_of_commencement").asText(null));
-            entity.setDateOfUdyamRegistration(data.path("date_of_udyam_registration").asText(null));
-            entity.setSocialCategory(data.path("social_category").asText(null));
-            entity.setDic(data.path("dic").asText(null));
-            entity.setMsmeDi(data.path("msme_di").asText(null));
-            entity.setMobile(data.path("mobile").asText(null));
-            entity.setEmail(data.path("email").asText(null));
-
-            // Extract enterprise type (latest from list)
-            JsonNode typeList = data.path("enterprise_type");
-            if (typeList.isArray() && typeList.size() > 0) {
-                entity.setEnterpriseType(typeList.get(0).path("enterprise_type").asText(null));
-            }
-
-            // Extract address
-            JsonNode address = data.path("official_address");
-            if (!address.isMissingNode()) {
-                entity.setState(address.path("state").asText(null));
-                entity.setDistrict(address.path("district").asText(null));
-                entity.setPincode(address.path("pincode").asText(null));
-            }
-
-            entity.setRawResponseJson(apiRoot.toString());
-            entity.setIsManual(isManual);
-            entity.setLastFetchedAt(LocalDateTime.now());
-            MsmeDetailsEntity saved = msmeDetailsRepository.save(entity);
-
-            recordLog(today, callType, cleanGstin, pan, httpStatus, "SUCCESS", "MSME details fetched and saved successfully.");
-            pruneAuditLogsOlderThan60Days(today);
-
-            long updatedRemaining = isManual ? remainingQuota : Math.max(0, remainingQuota - 1);
-            return mapToResponse(saved, "EXTERNAL_API", false, updatedRemaining, "Successfully fetched from MSME API and saved to database.");
-
-        } catch (Exception e) {
-            log.error("Error during MSME API fetch for GSTIN {}: {}", cleanGstin, e.getMessage());
-            recordLog(today, callType, cleanGstin, pan, 500, "FAILED", e.getMessage());
-
-            // If an older database record existed, return it gracefully
-            Optional<MsmeDetailsEntity> fallback = msmeDetailsRepository.findByGstinIgnoreCase(cleanGstin);
-            if (fallback.isPresent()) {
-                return mapToResponse(fallback.get(), "DATABASE_FALLBACK", true, remainingQuota,
-                        "API call failed: " + e.getMessage() + ". Returning previously stored database record.");
-            }
-
-            return MsmeDto.MsmeDetailsResponse.builder()
-                    .gstin(cleanGstin)
-                    .panNumber(pan)
-                    .msmeStatus("DATA_UNAVAILABLE")
-                    .fromDatabase(false)
-                    .source("FAILED")
-                    .dailyAutoQuotaRemaining(remainingQuota)
-                    .message("External API error: " + e.getMessage())
-                    .build();
-        }
+        return MsmeDto.MsmeDetailsResponse.builder()
+                .gstin(cleanGstin)
+                .panNumber(pan)
+                .msmeStatus("DATA_UNAVAILABLE")
+                .fromDatabase(false)
+                .source("NOT_IN_DATABASE")
+                .dailyAutoQuotaRemaining(updatedRemaining)
+                .message("Vendor MSME record not found in local database. External provider (Figmit) integration will be connected later.")
+                .build();
     }
 
     /**
@@ -211,13 +126,13 @@ public class MsmeService {
     }
 
     /**
-     * Seeds or updates a local test MSME record directly in the database.
-     * Useful for verifying the Database-First architecture and UI without consuming API hits.
+     * Seeds or updates a local MSME record directly in the database.
+     * Useful for storing and verifying MSME records under the Database-First architecture without external API dependencies.
      */
     @Transactional
     public MsmeDto.MsmeDetailsResponse seedTestMsmeRecord(MsmeDto.SeedMsmeRequest request) {
         if (request == null || request.getGstin() == null || request.getGstin().trim().length() < 15) {
-            throw new IllegalArgumentException("Valid 15-character GSTIN is required for seeding test record.");
+            throw new IllegalArgumentException("Valid 15-character GSTIN is required for seeding record.");
         }
 
         String cleanGstin = request.getGstin().trim().toUpperCase();
@@ -228,8 +143,8 @@ public class MsmeService {
 
         entity.setPanNumber(pan);
         entity.setMsmeStatus(request.getMsmeStatus() != null ? request.getMsmeStatus() : "VERIFIED");
-        entity.setUdyamNumber(request.getUdyamNumber() != null ? request.getUdyamNumber() : "UDYAM-TEST-" + pan);
-        entity.setEnterpriseName(request.getEnterpriseName() != null ? request.getEnterpriseName() : "TEST ENTERPRISE");
+        entity.setUdyamNumber(request.getUdyamNumber() != null ? request.getUdyamNumber() : "UDYAM-" + pan);
+        entity.setEnterpriseName(request.getEnterpriseName() != null ? request.getEnterpriseName() : "LOCAL ENTERPRISE");
         entity.setEnterpriseType(request.getEnterpriseType() != null ? request.getEnterpriseType() : "Small");
         entity.setMajorActivity(request.getMajorActivity() != null ? request.getMajorActivity() : "Services");
         entity.setState(request.getState() != null ? request.getState() : "DELHI");
@@ -242,7 +157,7 @@ public class MsmeService {
         long todayAuto = msmeApiLogRepository.countByCallDateAndCallType(LocalDate.now(), "AUTO");
         long remaining = Math.max(0, DAILY_AUTO_LIMIT - todayAuto);
 
-        return mapToResponse(saved, "DATABASE_SEEDED", true, remaining, "Test record successfully seeded into database.");
+        return mapToResponse(saved, "DATABASE_LOCAL", true, remaining, "Record successfully stored in local database.");
     }
 
     private void recordLog(LocalDate date, String type, String gstin, String pan, int httpStatus, String status, String error) {

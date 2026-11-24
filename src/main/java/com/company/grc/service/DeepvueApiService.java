@@ -15,14 +15,12 @@ import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
 
 import java.time.LocalDateTime;
-import java.util.Map;
 
 @Service
 public class DeepvueApiService {
 
     private static final String AUTHORIZE_URL = "https://production.deepvue.tech/v1/authorize";
     private static final String GSTIN_URL = "https://production.deepvue.tech/v1/verification/gstin-advanced?gstin_number=";
-    private static final String MSME_URL = "https://production.deepvue.tech/v1/business-compliance/pan-to-msme";
 
     @Value("${deepvue.client-id}")
     private String clientId;
@@ -118,35 +116,6 @@ public class DeepvueApiService {
             throw e;
         } catch (Exception e) {
             throw new DeepvueApiException("Failed to parse Deepvue API response for " + gstin + ": " + e.getMessage());
-        }
-    }
-
-    public JsonNode fetchMsmeDetails(String panNumber) {
-        String token = getToken();
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.set("Authorization", "Bearer " + token);
-        headers.set("x-api-key", apiKey);
-        headers.set(HttpHeaders.USER_AGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
-
-        Map<String, String> body = Map.of("pan_number", panNumber);
-        HttpEntity<Map<String, String>> request = new HttpEntity<>(body, headers);
-        ResponseEntity<String> response;
-        try {
-            response = restTemplate.exchange(MSME_URL, HttpMethod.POST, request, String.class);
-        } catch (Exception e) {
-            throw new DeepvueApiException("HTTP error calling Deepvue MSME API for PAN " + panNumber + ": " + e.getMessage());
-        }
-
-        if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
-            throw new DeepvueApiException("Deepvue MSME API returned HTTP " + response.getStatusCode() + " for PAN: " + panNumber);
-        }
-
-        try {
-            return objectMapper.readTree(response.getBody());
-        } catch (Exception e) {
-            throw new DeepvueApiException("Failed to parse Deepvue MSME API response for PAN " + panNumber + ": " + e.getMessage());
         }
     }
 
