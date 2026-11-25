@@ -95,6 +95,21 @@ public class Gstr7AdminController {
         return ResponseEntity.ok(updated);
     }
 
+    @PostMapping("/sync/{gstin}")
+    public ResponseEntity<?> syncGstr7Filing(
+            @PathVariable String gstin,
+            @RequestHeader(value = "Role", required = false) String role) {
+        if (isNotAdmin(role)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Access denied. super_admin role required.");
+        }
+        try {
+            GstDetailsEntity updated = gstr7Service.syncGstr7Filing(gstin);
+            return ResponseEntity.ok(updated);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
+        }
+    }
+
     @Data
     public static class HsnRequest {
         private String pan;
