@@ -28,14 +28,17 @@ public class GstFetchService {
     private final GstDetailsRepository gstDetailsRepository;
     private final EmailService emailService;
     private final DeepvueApiService deepvueApiService;
+    private final RpacpcApiService rpacpcApiService;
 
     @Autowired
     public GstFetchService(GstDetailsRepository gstDetailsRepository,
             EmailService emailService,
-            DeepvueApiService deepvueApiService) {
+            DeepvueApiService deepvueApiService,
+            RpacpcApiService rpacpcApiService) {
         this.gstDetailsRepository = gstDetailsRepository;
         this.emailService = emailService;
         this.deepvueApiService = deepvueApiService;
+        this.rpacpcApiService = rpacpcApiService;
     }
 
     public void validateGstin(String gstin) {
@@ -61,30 +64,39 @@ public class GstFetchService {
     }
 
     /**
-     * Calls Deepvue API, maps response to entity and saves.
+     * Calls RPACPC / Deepvue API, maps response to entity and saves.
      * On API error, saves an error stub with apiError=true.
      */
     @Transactional
     public GstDetailsEntity fetchAndSaveFromApi(String gstin) {
+        GstDetailsEntity entity = GstDetailsEntity.builder()
+                .gstin(gstin)
+                .source("API")
+                .dataSource("API")
+                .apiError(false)
+                .lastApiSync(LocalDateTime.now())
+                .createdAt(LocalDateTime.now())
+                .delayCountGstr1(0)
+                .delayCountGstr3b(0)
+                .build();
+
         try {
-            DeepvueGstDto.DataPayload data = deepvueApiService.fetchGstDetails(gstin);
-
-            GstDetailsEntity entity = GstDetailsEntity.builder()
-                    .gstin(gstin)
-                    .source("API")
-                    .dataSource("API")
-                    .apiError(false)
-                    .lastApiSync(LocalDateTime.now())
-                    .createdAt(LocalDateTime.now())
-                    .delayCountGstr1(0)
-                    .delayCountGstr3b(0)
-                    .build();
-
-            mapApiDataToEntity(entity, data);
-            GstDetailsEntity saved = gstDetailsRepository.save(entity);
-            emailService.sendNewGstNotification(gstin);
-            return saved;
-
+            // 1. Try RPACPC API first
+            try {
+                com.fasterxml.jackson.databind.JsonNode rpacpcData = rpacpcApiService.fetchGstDetails(gstin);
+                mapRpacpcJsonToEntity(entity, rpacpcData);
+                GstDetailsEntity saved = gstDetailsRepository.save(entity);
+                emailService.sendNewGstNotification(gstin);
+                return saved;
+            } catch (Exception rpacpcEx) {
+                System.err.println("RPACPC fetch failed for " + gstin + ": " + rpacpcEx.getMessage() + ". Trying fallback if available.");
+                // Fallback to Deepvue if RPACPC fails
+                DeepvueGstDto.DataPayload data = deepvueApiService.fetchGstDetails(gstin);
+                mapApiDataToEntity(entity, data);
+                GstDetailsEntity saved = gstDetailsRepository.save(entity);
+                emailService.sendNewGstNotification(gstin);
+                return saved;
+            }
         } catch (Exception e) {
             System.err.println("fetchAndSaveFromApi failed for GSTIN " + gstin + ": " + e.getMessage());
 
@@ -108,7 +120,7 @@ public class GstFetchService {
     }
 
     /**
-     * Refreshes an existing GSTIN from the Deepvue API.
+     * Refreshes an existing GSTIN from RPACPC / Deepvue API.
      * Used by admin-triggered refresh. Creates entity if it doesn't exist.
      * Throws RuntimeException if the API call fails (so caller can record error).
      */
@@ -122,8 +134,14 @@ public class GstFetchService {
                         .delayCountGstr3b(0)
                         .build());
         try {
-            DeepvueGstDto.DataPayload data = deepvueApiService.fetchGstDetails(gstin);
-            mapApiDataToEntity(entity, data);
+            try {
+                com.fasterxml.jackson.databind.JsonNode rpacpcData = rpacpcApiService.fetchGstDetails(gstin);
+                mapRpacpcJsonToEntity(entity, rpacpcData);
+            } catch (Exception rpacpcEx) {
+                System.err.println("RPACPC refresh failed for " + gstin + ": " + rpacpcEx.getMessage() + ". Trying fallback.");
+                DeepvueGstDto.DataPayload data = deepvueApiService.fetchGstDetails(gstin);
+                mapApiDataToEntity(entity, data);
+            }
             entity.setSource("API");
             entity.setDataSource("API");
             entity.setApiError(false);
@@ -135,6 +153,118 @@ public class GstFetchService {
             entity.setLastApiSync(LocalDateTime.now());
             gstDetailsRepository.save(entity);
             throw new RuntimeException("API error for GSTIN " + gstin + ": " + e.getMessage());
+        }
+    }
+
+    private void mapRpacpcJsonToEntity(GstDetailsEntity entity, com.fasterxml.jackson.databind.JsonNode root) {
+        com.fasterxml.jackson.databind.JsonNode data = root;
+        if (root.has("data") && root.get("data").isObject()) {
+            data = root.get("data");
+        } else if (root.has("result") && root.get("result").isObject()) {
+            data = root.get("result");
+        }
+
+        String tradeName = getFirstJsonText(data, "tradeName", "trade_name", "business_name", "tradeNam");
+        String legalName = getFirstJsonText(data, "legalName", "legal_name", "lgnm");
+        if (tradeName == null) tradeName = legalName;
+        if (legalName == null) legalName = tradeName;
+        entity.setTradeName(tradeName);
+        entity.setLegalName(legalName);
+
+        String gstType = getFirstJsonText(data, "constitutionOfBusiness", "constitution_of_business", "ctb", "taxpayer_type");
+        if (gstType != null) entity.setGstType(gstType);
+
+        String status = getFirstJsonText(data, "gstinStatus", "status", "sts", "gstStatus");
+        if (status != null) entity.setGstStatus(status);
+
+        String pan = getFirstJsonText(data, "panNumber", "pan_number", "pan");
+        if (pan == null && entity.getGstin() != null && entity.getGstin().length() >= 12) {
+            pan = entity.getGstin().substring(2, 12);
+        }
+        if (pan != null) entity.setPanNumber(pan);
+
+        String regDateStr = getFirstJsonText(data, "dateOfRegistration", "date_of_registration", "rgdt", "registrationDate");
+        if (regDateStr != null && !regDateStr.isBlank()) {
+            try {
+                if (regDateStr.contains("/")) {
+                    String[] parts = regDateStr.split("/");
+                    if (parts.length == 3) {
+                        entity.setRegistrationDate(LocalDate.of(Integer.parseInt(parts[2]), Integer.parseInt(parts[1]), Integer.parseInt(parts[0])));
+                    }
+                } else {
+                    entity.setRegistrationDate(LocalDate.parse(regDateStr));
+                }
+            } catch (Exception ignored) {}
+        }
+
+        String address = getFirstJsonText(data, "address", "principalAddress", "pradr");
+        if (address != null) entity.setAddress(address);
+
+        String coreAct = getFirstJsonText(data, "natureOfCoreBusinessActivityDescription", "coreActivity", "nature_of_business");
+        if (coreAct != null) entity.setCoreActivity(coreAct);
+
+        String turnover = getFirstJsonText(data, "annualTurnover", "turnover", "aggregateTurnover");
+        entity.setAggregateTurnover(cleanTurnover(turnover));
+
+        String aadhaar = getFirstJsonText(data, "aadhaarValidation", "aadhaar_validation", "adhr_validation");
+        if (aadhaar != null) entity.setAadhaarValidation(aadhaar);
+
+        // Process return filing status
+        parseRpacpcFilings(entity, data);
+    }
+
+    private String getFirstJsonText(com.fasterxml.jackson.databind.JsonNode node, String... keys) {
+        if (node == null) return null;
+        for (String k : keys) {
+            if (node.hasNonNull(k)) {
+                String val = node.get(k).asText();
+                if (val != null && !val.trim().isBlank()) return val.trim();
+            }
+        }
+        return null;
+    }
+
+    private void parseRpacpcFilings(GstDetailsEntity entity, com.fasterxml.jackson.databind.JsonNode data) {
+        com.fasterxml.jackson.databind.JsonNode filingsNode = null;
+        if (data.has("filing_status")) filingsNode = data.get("filing_status");
+        else if (data.has("filingDetails")) filingsNode = data.get("filingDetails");
+        else if (data.has("filings")) filingsNode = data.get("filings");
+
+        if (filingsNode == null || !filingsNode.isArray()) return;
+
+        Map<String, DeepvueGstDto.FilingEntry> filingMap = new HashMap<>();
+        for (com.fasterxml.jackson.databind.JsonNode item : filingsNode) {
+            if (item.isArray()) {
+                for (com.fasterxml.jackson.databind.JsonNode inner : item) {
+                    processFilingNode(inner, filingMap);
+                }
+            } else if (item.isObject()) {
+                processFilingNode(item, filingMap);
+            }
+        }
+
+        if (!filingMap.isEmpty()) {
+            DeepvueGstDto.DataPayload payload = new DeepvueGstDto.DataPayload();
+            payload.setFilingStatus(List.of(new java.util.ArrayList<>(filingMap.values())));
+            calculateDelayCounts(entity, payload);
+        }
+    }
+
+    private void processFilingNode(com.fasterxml.jackson.databind.JsonNode node, Map<String, DeepvueGstDto.FilingEntry> map) {
+        String rtntype = getFirstJsonText(node, "rtntype", "returnType", "return_type");
+        String fy = getFirstJsonText(node, "financialYear", "financial_year", "fy");
+        String taxp = getFirstJsonText(node, "taxPeriod", "tax_period", "ret_prd");
+        String dof = getFirstJsonText(node, "dateOfFiling", "date_of_filing", "dof");
+        String status = getFirstJsonText(node, "status", "filing_status");
+
+        if (rtntype != null && taxp != null) {
+            DeepvueGstDto.FilingEntry entry = new DeepvueGstDto.FilingEntry();
+            entry.setReturnType(rtntype);
+            entry.setFinancialYear(fy != null ? fy : "");
+            entry.setTaxPeriod(taxp);
+            entry.setDateOfFiling(dof);
+            entry.setStatus(status);
+            map.put(rtntype.toUpperCase() + "|" + entry.getFinancialYear() + "|" + taxp, entry);
         }
     }
 
