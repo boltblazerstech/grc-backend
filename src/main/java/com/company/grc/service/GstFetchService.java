@@ -164,26 +164,40 @@ public class GstFetchService {
             data = root.get("result");
         }
 
-        String tradeName = getFirstJsonText(data, "tradeName", "trade_name", "business_name", "tradeNam");
-        String legalName = getFirstJsonText(data, "legalName", "legal_name", "lgnm");
+        com.fasterxml.jackson.databind.JsonNode basic = data;
+        if (data.has("basicDetails") && data.get("basicDetails").isObject()) {
+            basic = data.get("basicDetails");
+        }
+
+        String tradeName = getFirstJsonText(basic, "tradeName", "trade_name", "business_name", "tradeNam");
+        if (tradeName == null) tradeName = getFirstJsonText(data, "tradeName", "trade_name", "business_name", "tradeNam");
+        if ("NA".equalsIgnoreCase(tradeName)) tradeName = null;
+
+        String legalName = getFirstJsonText(basic, "Legal_Name", "legalName", "legal_name", "lgnm");
+        if (legalName == null) legalName = getFirstJsonText(data, "Legal_Name", "legalName", "legal_name", "lgnm");
+
         if (tradeName == null) tradeName = legalName;
         if (legalName == null) legalName = tradeName;
         entity.setTradeName(tradeName);
         entity.setLegalName(legalName);
 
-        String gstType = getFirstJsonText(data, "constitutionOfBusiness", "constitution_of_business", "ctb", "taxpayer_type");
+        String gstType = getFirstJsonText(basic, "constitution", "constitutionOfBusiness", "constitution_of_business", "ctb", "taxpayer_type");
+        if (gstType == null) gstType = getFirstJsonText(data, "constitution", "constitutionOfBusiness", "constitution_of_business", "ctb", "taxpayer_type");
         if (gstType != null) entity.setGstType(gstType);
 
-        String status = getFirstJsonText(data, "gstinStatus", "status", "sts", "gstStatus");
+        String status = getFirstJsonText(basic, "registrationStatus", "sts", "gstinStatus", "status", "gstStatus");
+        if (status == null) status = getFirstJsonText(data, "registrationStatus", "sts", "gstinStatus", "status", "gstStatus");
         if (status != null) entity.setGstStatus(status);
 
-        String pan = getFirstJsonText(data, "panNumber", "pan_number", "pan");
+        String pan = getFirstJsonText(basic, "panNumber", "pan_number", "pan");
+        if (pan == null) pan = getFirstJsonText(data, "panNumber", "pan_number", "pan");
         if (pan == null && entity.getGstin() != null && entity.getGstin().length() >= 12) {
             pan = entity.getGstin().substring(2, 12);
         }
         if (pan != null) entity.setPanNumber(pan);
 
-        String regDateStr = getFirstJsonText(data, "dateOfRegistration", "date_of_registration", "rgdt", "registrationDate");
+        String regDateStr = getFirstJsonText(basic, "registrationDate", "rgdt", "dateOfRegistration", "date_of_registration");
+        if (regDateStr == null) regDateStr = getFirstJsonText(data, "registrationDate", "rgdt", "dateOfRegistration", "date_of_registration");
         if (regDateStr != null && !regDateStr.isBlank()) {
             try {
                 if (regDateStr.contains("/")) {
@@ -197,16 +211,20 @@ public class GstFetchService {
             } catch (Exception ignored) {}
         }
 
-        String address = getFirstJsonText(data, "address", "principalAddress", "pradr");
+        String address = getFirstJsonText(basic, "address", "principalAddress", "pradr", "ctj", "jurisdiction");
+        if (address == null) address = getFirstJsonText(data, "address", "principalAddress", "pradr", "ctj", "jurisdiction");
         if (address != null) entity.setAddress(address);
 
-        String coreAct = getFirstJsonText(data, "natureOfCoreBusinessActivityDescription", "coreActivity", "nature_of_business");
+        String coreAct = getFirstJsonText(basic, "businessNature", "natureOfCoreBusinessActivityDescription", "coreActivity", "nature_of_business");
+        if (coreAct == null) coreAct = getFirstJsonText(data, "businessNature", "natureOfCoreBusinessActivityDescription", "coreActivity", "nature_of_business");
         if (coreAct != null) entity.setCoreActivity(coreAct);
 
-        String turnover = getFirstJsonText(data, "annualTurnover", "turnover", "aggregateTurnover");
+        String turnover = getFirstJsonText(basic, "aggreTurnOver", "aggreTurnOverFY", "annualTurnover", "turnover", "aggregateTurnover");
+        if (turnover == null) turnover = getFirstJsonText(data, "aggreTurnOver", "aggreTurnOverFY", "annualTurnover", "turnover", "aggregateTurnover");
         entity.setAggregateTurnover(cleanTurnover(turnover));
 
-        String aadhaar = getFirstJsonText(data, "aadhaarValidation", "aadhaar_validation", "adhr_validation");
+        String aadhaar = getFirstJsonText(basic, "aadharVerified", "aadhaarValidation", "aadhaar_validation");
+        if (aadhaar == null) aadhaar = getFirstJsonText(data, "aadharVerified", "aadhaarValidation", "aadhaar_validation");
         if (aadhaar != null) entity.setAadhaarValidation(aadhaar);
 
         // Process return filing status
@@ -225,22 +243,19 @@ public class GstFetchService {
     }
 
     private void parseRpacpcFilings(GstDetailsEntity entity, com.fasterxml.jackson.databind.JsonNode data) {
-        com.fasterxml.jackson.databind.JsonNode filingsNode = null;
-        if (data.has("filing_status")) filingsNode = data.get("filing_status");
-        else if (data.has("filingDetails")) filingsNode = data.get("filingDetails");
-        else if (data.has("filings")) filingsNode = data.get("filings");
-
-        if (filingsNode == null || !filingsNode.isArray()) return;
-
         Map<String, DeepvueGstDto.FilingEntry> filingMap = new HashMap<>();
-        for (com.fasterxml.jackson.databind.JsonNode item : filingsNode) {
-            if (item.isArray()) {
-                for (com.fasterxml.jackson.databind.JsonNode inner : item) {
-                    processFilingNode(inner, filingMap);
+
+        if (data.has("filingDetails") && data.get("filingDetails").isObject()) {
+            com.fasterxml.jackson.databind.JsonNode fd = data.get("filingDetails");
+            for (String yearKey : new String[]{"currentYear", "previousYear"}) {
+                if (fd.has(yearKey) && fd.get(yearKey).has("filingStatus")) {
+                    com.fasterxml.jackson.databind.JsonNode fs = fd.get(yearKey).get("filingStatus");
+                    extractFilingEntries(fs, filingMap);
                 }
-            } else if (item.isObject()) {
-                processFilingNode(item, filingMap);
             }
+        }
+        if (data.has("filing_status")) {
+            extractFilingEntries(data.get("filing_status"), filingMap);
         }
 
         if (!filingMap.isEmpty()) {
@@ -250,11 +265,28 @@ public class GstFetchService {
         }
     }
 
+    private void extractFilingEntries(com.fasterxml.jackson.databind.JsonNode node, Map<String, DeepvueGstDto.FilingEntry> filingMap) {
+        if (node == null) return;
+        if (node.isArray()) {
+            for (com.fasterxml.jackson.databind.JsonNode item : node) {
+                if (item.isArray()) {
+                    for (com.fasterxml.jackson.databind.JsonNode inner : item) {
+                        processFilingNode(inner, filingMap);
+                    }
+                } else if (item.isObject()) {
+                    processFilingNode(item, filingMap);
+                }
+            }
+        } else if (node.isObject()) {
+            processFilingNode(node, filingMap);
+        }
+    }
+
     private void processFilingNode(com.fasterxml.jackson.databind.JsonNode node, Map<String, DeepvueGstDto.FilingEntry> map) {
         String rtntype = getFirstJsonText(node, "rtntype", "returnType", "return_type");
-        String fy = getFirstJsonText(node, "financialYear", "financial_year", "fy");
-        String taxp = getFirstJsonText(node, "taxPeriod", "tax_period", "ret_prd");
-        String dof = getFirstJsonText(node, "dateOfFiling", "date_of_filing", "dof");
+        String fy = getFirstJsonText(node, "finYear", "financialYear", "financial_year", "fy");
+        String taxp = getFirstJsonText(node, "period", "taxPeriod", "tax_period", "ret_prd");
+        String dof = getFirstJsonText(node, "filingDate", "dateOfFiling", "date_of_filing", "dof");
         String status = getFirstJsonText(node, "status", "filing_status");
 
         if (rtntype != null && taxp != null) {
