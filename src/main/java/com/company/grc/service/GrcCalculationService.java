@@ -90,6 +90,14 @@ public class GrcCalculationService {
         String trimmedGstin = (gstin != null) ? gstin.trim() : null;
         gstFetchService.validateGstin(trimmedGstin);
 
+        // Untrash if previously marked as trashed
+        gstDetailsRepository.findById(trimmedGstin).ifPresent(d -> {
+            if (Boolean.TRUE.equals(d.getIsTrashed())) {
+                d.setIsTrashed(false);
+                gstDetailsRepository.save(d);
+            }
+        });
+
         // Return existing score without re-calling API
         Optional<GrcScoreEntity> existingScoreOpt = grcScoreRepository.findById(trimmedGstin);
         if (existingScoreOpt.isPresent()) {

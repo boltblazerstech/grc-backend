@@ -58,7 +58,12 @@ public class GstFetchService {
         validateGstin(trimmed);
         Optional<GstDetailsEntity> existing = gstDetailsRepository.findById(trimmed);
         if (existing.isPresent()) {
-            return existing.get();
+            GstDetailsEntity entity = existing.get();
+            if (Boolean.TRUE.equals(entity.getIsTrashed())) {
+                entity.setIsTrashed(false);
+                return gstDetailsRepository.save(entity);
+            }
+            return entity;
         }
         return fetchAndSaveFromApi(trimmed);
     }
@@ -69,16 +74,19 @@ public class GstFetchService {
      */
     @Transactional
     public GstDetailsEntity fetchAndSaveFromApi(String gstin) {
-        GstDetailsEntity entity = GstDetailsEntity.builder()
-                .gstin(gstin)
-                .source("API")
-                .dataSource("API")
-                .apiError(false)
-                .lastApiSync(LocalDateTime.now())
-                .createdAt(LocalDateTime.now())
-                .delayCountGstr1(0)
-                .delayCountGstr3b(0)
-                .build();
+        GstDetailsEntity entity = gstDetailsRepository.findById(gstin).orElseGet(() ->
+                GstDetailsEntity.builder()
+                        .gstin(gstin)
+                        .source("API")
+                        .dataSource("API")
+                        .apiError(false)
+                        .lastApiSync(LocalDateTime.now())
+                        .createdAt(LocalDateTime.now())
+                        .delayCountGstr1(0)
+                        .delayCountGstr3b(0)
+                        .build()
+        );
+        entity.setIsTrashed(false);
 
         try {
             // 1. Try RPACPC API first
